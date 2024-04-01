@@ -11,6 +11,7 @@ use std::ops::{Bound, RangeBounds};
 
 // type PosVec = Vec<usize>;
 type PosVec = smallvec::SmallVec<[usize; 8]>;
+type Split<K, V> = ((K, V), Tree<K, V>);
 
 const LEAF_SPLIT: usize = 5;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
@@ -359,7 +360,7 @@ impl<K, V> BTreeMap<K, V> {
         self.tree.remove_pos(&pos.ix, 0)
     }
 
-    fn insert_and_get_mut(&mut self, pos: &mut Position, key: K, value: V) -> &mut (K, V)
+    fn ins_pos(&mut self, pos: &mut Position, key: K, value: V) -> &mut (K, V)
     where
         K: Ord,
     {
@@ -615,10 +616,7 @@ where
 
     /// Insert value into map returning reference to inserted value.
     pub fn insert(mut self, value: V) -> &'a mut V {
-        &mut self
-            .map
-            .insert_and_get_mut(&mut self.pos, self.key, value)
-            .1
+        &mut self.map.ins_pos(&mut self.pos, self.key, value).1
     }
 }
 
@@ -706,7 +704,7 @@ impl<K, V> Default for Tree<K, V> {
 }
 
 impl<K, V> Tree<K, V> {
-    fn prepare_insert(&mut self, pos: &mut PosVec, level: usize) -> Option<(Tree<K, V>, (K, V))>
+    fn prepare_insert(&mut self, pos: &mut PosVec, level: usize) -> Option<Split<K, V>>
     where
         K: Ord,
     {
@@ -726,7 +724,7 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn new_root(&mut self, (right, med): (Tree<K, V>, (K, V))) {
+    fn new_root(&mut self, (med, right): Split<K, V>) {
         let left = std::mem::take(self);
         *self = Tree::NL(NonLeaf {
             v: vec![med],
@@ -963,13 +961,13 @@ impl<K, V> Leaf<K, V> {
         self.0.len() >= LEAF_FULL
     }
 
-    fn split(&mut self) -> (Tree<K, V>, (K, V)) {
+    fn split(&mut self) -> Split<K, V> {
         let right = Tree::L(Self(self.0.split_off(LEAF_SPLIT)));
         let med = self.0.pop().unwrap();
-        (right, med)
+        (med, right)
     }
 
-    fn prepare_insert(&mut self, pos: &mut PosVec) -> Option<(Tree<K, V>, (K, V))> {
+    fn prepare_insert(&mut self, pos: &mut PosVec) -> Option<Split<K, V>> {
         if self.full() {
             let mut level = pos.len() - 1;
             if level == 0 {
@@ -1260,21 +1258,21 @@ impl<K, V> NonLeaf<K, V> {
         self.c[i].find_position(key, pos);
     }
 
-    fn split(&mut self) -> (Tree<K, V>, (K, V)) {
+    fn split(&mut self) -> Split<K, V> {
         let right = Self {
             v: self.v.split_off(NON_LEAF_SPLIT),
             c: self.c.split_off(NON_LEAF_SPLIT),
         };
         let med = self.v.pop().unwrap();
-        (Tree::NL(right), med)
+        (med, Tree::NL(right))
     }
 
-    fn prepare_insert(&mut self, pos: &mut PosVec, mut level: usize) -> Option<(Tree<K, V>, (K, V))>
+    fn prepare_insert(&mut self, pos: &mut PosVec, mut level: usize) -> Option<Split<K, V>>
     where
         K: Ord,
     {
         let i = pos[level];
-        if let Some((right, med)) = self.c[i].prepare_insert(pos, level + 1) {
+        if let Some((med, right)) = self.c[i].prepare_insert(pos, level + 1) {
             self.v.insert(i, med);
             self.c.insert(i + 1, right);
         }
