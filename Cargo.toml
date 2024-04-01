@@ -1,0 +1,10 @@
+[package]
+name = "btree_experiment"
+version = "0.1.47"
+edition = "2021"
+authors = ["George Barwood"]
+description = "Crate implements a BTreeMap similar to std::collections::BTreeMap."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+smallvec = "1.13.2"
