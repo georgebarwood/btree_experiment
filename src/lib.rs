@@ -9,7 +9,7 @@ use std::cmp::{Ord, Ordering};
 use std::iter::{DoubleEndedIterator, FusedIterator};
 use std::ops::{Bound, RangeBounds};
 
-// type PosVec = Vec<usize>;
+// type PosVec = Vec<u8>;
 type PosVec = smallvec::SmallVec<[u8; 8]>;
 type Split<K, V> = ((K, V), Tree<K, V>);
 
@@ -114,9 +114,9 @@ impl<K, V> BTreeMap<K, V> {
         K: Ord,
     {
         match self.entry(key) {
-            Entry::Occupied(mut entry) => Some(entry.insert(value)),
-            Entry::Vacant(entry) => {
-                entry.insert(value);
+            Entry::Occupied(mut e) => Some(e.insert(value)),
+            Entry::Vacant(e) => {
+                e.insert(value);
                 None
             }
         }
@@ -502,8 +502,8 @@ where
     /// Get reference to entry key.
     pub fn key(&self) -> &K {
         match self {
-            Entry::Vacant(v) => &v.key,
-            Entry::Occupied(o) => o.key(),
+            Entry::Vacant(e) => &e.key,
+            Entry::Occupied(e) => e.key(),
         }
     }
 
@@ -557,9 +557,9 @@ where
         F: FnOnce(&mut V),
     {
         match &mut self {
-            Entry::Vacant(_v) => {}
-            Entry::Occupied(o) => {
-                let v = o.get_mut();
+            Entry::Vacant(_e) => {}
+            Entry::Occupied(e) => {
+                let v = e.get_mut();
                 f(v);
             }
         }
@@ -953,7 +953,7 @@ impl<K, V> Leaf<K, V> {
     }
 
     fn prepare_insert(&mut self, pos: &mut PosVec) -> Option<Split<K, V>> {
-        debug_assert!( self.full() );
+        debug_assert!(self.full());
         let mut level = pos.len() - 1;
         if level == 0 {
             level += 1;
@@ -1844,109 +1844,108 @@ fn test() {
     }
     println!("t.len()={}", t.len());
 
-    if true{
+    if true {
+        assert!(t.first_key_value().unwrap().0 == &0);
+        assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
-      assert!(t.first_key_value().unwrap().0 == &0);
-      assert!(t.last_key_value().unwrap().0 == &(n - 1));
+        println!("doing for x in & test");
+        for x in &t {
+            if *x.0 < 50 {
+                print!("{:?};", x);
+            }
+        }
+        println!("");
 
-      println!("doing for x in & test");
-      for x in &t {
-          if *x.0 < 50 {
-              print!("{:?};", x);
-          }
-      }
-      println!("");
+        println!("doing for x in &mut test");
+        for x in &mut t {
+            *x.1 *= 1;
+            if *x.0 < 50 {
+                print!("{:?};", x);
+            }
+        }
+        println!("");
 
-      println!("doing for x in &mut test");
-      for x in &mut t {
-          *x.1 *= 1;
-          if *x.0 < 50 {
-              print!("{:?};", x);
-          }
-      }
-      println!("");
+        println!("doing range mut test");
 
-      println!("doing range mut test");
+        for x in t.range_mut(20..=60000).rev() {
+            if *x.0 < 50 {
+                print!("{:?};", x);
+            }
+        }
+        println!("done range mut test");
 
-      for x in t.range_mut(20..=60000).rev() {
-          if *x.0 < 50 {
-              print!("{:?};", x);
-          }
-      }
-      println!("done range mut test");
+        println!("t.len()={} doing range non-mut test", t.len());
 
-      println!("t.len()={} doing range non-mut test", t.len());
+        for x in t.range(20..=60000).rev() {
+            if *x.0 < 50 {
+                print!("{:?};", x);
+            }
+        }
+        println!("done range non-mut test");
 
-      for x in t.range(20..=60000).rev() {
-          if *x.0 < 50 {
-              print!("{:?};", x);
-          }
-      }
-      println!("done range non-mut test");
+        println!("doing get test");
+        for i in 0..n {
+            assert_eq!(t.get(&i).unwrap(), &i);
+        }
 
-      println!("doing get test");
-      for i in 0..n {
-          assert_eq!(t.get(&i).unwrap(), &i);
-      }
+        println!("doing get_mut test");
+        for i in 0..n {
+            assert_eq!(t.get_mut(&i).unwrap(), &i);
+        }
 
-      println!("doing get_mut test");
-      for i in 0..n {
-          assert_eq!(t.get_mut(&i).unwrap(), &i);
-      }
+        println!("t.len()={} doing walk test", t.len());
+        t.walk(&10, &mut |(k, _): &(usize, usize)| {
+            if *k <= 50 {
+                print!("{:?};", k);
+                false
+            } else {
+                true
+            }
+        });
+        println!();
 
-      println!("t.len()={} doing walk test", t.len());
-      t.walk(&10, &mut |(k, _): &(usize, usize)| {
-          if *k <= 50 {
-              print!("{:?};", k);
-              false
-          } else {
-              true
-          }
-      });
-      println!();
+        println!("doing remove evens test");
+        for i in 0..n {
+            if i % 2 == 0 {
+                assert_eq!(t.remove(&i).unwrap(), i);
+            }
+        }
 
-      println!("doing remove evens test");
-      for i in 0..n {
-          if i % 2 == 0 {
-              assert_eq!(t.remove(&i).unwrap(), i);
-          }
-      }
+        println!("t.len()={} re-doing walk test", t.len());
+        t.walk(&10, &mut |(k, _): &(usize, usize)| {
+            if *k <= 50 {
+                print!("{:?};", k);
+                false
+            } else {
+                true
+            }
+        });
+        println!();
 
-      println!("t.len()={} re-doing walk test", t.len());
-      t.walk(&10, &mut |(k, _): &(usize, usize)| {
-          if *k <= 50 {
-              print!("{:?};", k);
-              false
-          } else {
-              true
-          }
-      });
-      println!();
+        println!("doing retain test - retain only keys divisible by 5");
+        t.retain(|k, _v| k % 5 == 0);
 
-      println!("doing retain test - retain only keys divisible by 5");
-      t.retain(|k, _v| k % 5 == 0);
+        println!("Consuming iterator test");
+        for x in t {
+            if x.0 < 50 {
+                print!("{:?};", x);
+            }
+        }
+        println!();
 
-      println!("Consuming iterator test");
-      for x in t {
-          if x.0 < 50 {
-              print!("{:?};", x);
-          }
-      }
-      println!();
+        println!("FromIter collect test");
+        let a = [1, 2, 3];
+        let map: BTreeMap<i32, i32> = a.iter().map(|&x| (x, x * x)).collect();
+        for x in map {
+            print!("{:?};", x);
+        }
+        println!();
 
-      println!("FromIter collect test");
-      let a = [1, 2, 3];
-      let map: BTreeMap<i32, i32> = a.iter().map(|&x| (x, x * x)).collect();
-      for x in map {
-          print!("{:?};", x);
-      }
-      println!();
-
-      println!("From test");
-      let map = BTreeMap::from([(1, 2), (3, 4)]);
-      for x in map {
-          print!("{:?};", x);
-      }
-      println!();
+        println!("From test");
+        let map = BTreeMap::from([(1, 2), (3, 4)]);
+        for x in map {
+            print!("{:?};", x);
+        }
+        println!();
     }
 }
