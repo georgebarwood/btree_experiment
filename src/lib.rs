@@ -2,10 +2,7 @@
 //!
 //! One difference is that keys (as well as values) can be mutated using mutable iterators.
 
-#![cfg_attr(
-    any(debug_assertions, not(feature = "unsafe-optim")),
-    forbid(unsafe_code)
-)] // see util::perf_assert! macro
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 use std::borrow::Borrow;
 use std::cmp::{Ord, Ordering};
@@ -16,27 +13,9 @@ use std::ops::{Bound, RangeBounds};
 type PosVec = smallvec::SmallVec<[u8; 8]>;
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-/// In debug mode or feature unsafe-optim not enabled, same as debug_assert! otherwise unsafe compiler hint.
-#[cfg(any(debug_assertions, not(feature = "unsafe-optim")))]
-macro_rules! unsafe_assert {
-    ( $cond: expr ) => {
-        debug_assert!($cond)
-    };
-}
-
-/// In debug mode or feature unsafe-optim not enabled, same as debug_assert! otherwise unsafe compiler hint.
-#[cfg(all(not(debug_assertions), feature = "unsafe-optim"))]
-macro_rules! unsafe_assert {
-    ( $cond: expr ) => {
-        if !$cond {
-            unsafe { std::hint::unreachable_unchecked() }
-        }
-    };
-}
-
 const LEAF_SPLIT: usize = 5;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
-const NON_LEAF_SPLIT: usize = 17;
+const NON_LEAF_SPLIT: usize = 9;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
 
 fn bounded<T, R>(range: &R) -> (bool, bool)
@@ -1038,7 +1017,6 @@ impl<K, V> Leaf<K, V> {
     }
 
     fn do_insert(&mut self, pos: &[u8], level: usize, key: K, value: V) -> &mut (K, V) {
-        unsafe_assert!(level < pos.len());
         let i = pos[level] as usize;
         self.0.insert(i, (key, value));
         &mut self.0[i]
@@ -1256,7 +1234,6 @@ impl<K, V> NonLeaf<K, V> {
             }
         }
         pos.ix.push(i as u8);
-        unsafe_assert!(i < self.c.len());
         self.c[i].find_position(key, pos);
     }
 
@@ -1270,7 +1247,6 @@ impl<K, V> NonLeaf<K, V> {
     }
 
     fn prepare_insert(&mut self, pos: &mut PosVec, mut level: usize) -> Option<Split<K, V>> {
-        unsafe_assert!(level < pos.len());
         let i = pos[level] as usize;
         if let Some((med, right)) = self.c[i].prepare_insert(pos, level + 1) {
             self.v.insert(i, med);
@@ -1292,9 +1268,7 @@ impl<K, V> NonLeaf<K, V> {
     }
 
     fn do_insert(&mut self, pos: &[u8], level: usize, key: K, value: V) -> &mut (K, V) {
-        unsafe_assert!(level < pos.len());
         let i = pos[level] as usize;
-        unsafe_assert!(i < self.c.len());
         self.c[i].do_insert(pos, level + 1, key, value)
     }
 
@@ -1322,7 +1296,6 @@ impl<K, V> NonLeaf<K, V> {
                 }
             }
         }
-        unsafe_assert!(i < self.c.len());
         self.c[i].remove(key)
     }
 
@@ -1863,15 +1836,15 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
 fn test() {
-    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+    let mut t = BTreeMap::<usize, usize>::default();
     let n = 1000000;
 
-    for i in (0..n).rev() {
+    for i in 0..n {
         t.insert(i, i);
     }
     println!("t.len()={}", t.len());
 
-    if false {
+    if true {
         assert!(t.first_key_value().unwrap().0 == &0);
         assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
@@ -1920,18 +1893,16 @@ fn test() {
             assert_eq!(t.get_mut(&i).unwrap(), &i);
         }
 
-        /*
-                println!("t.len()={} doing walk test", t.len());
-                t.walk(&10, &mut |(k, _): &(usize, usize)| {
-                    if *k <= 50 {
-                        print!("{:?};", k);
-                        false
-                    } else {
-                        true
-                    }
-                });
-                println!();
-        */
+        println!("t.len()={} doing walk test", t.len());
+        t.walk(&10, &mut |(k, _): &(usize, usize)| {
+            if *k <= 50 {
+                print!("{:?};", k);
+                false
+            } else {
+                true
+            }
+        });
+        println!();
 
         println!("doing remove evens test");
         for i in 0..n {
@@ -1940,18 +1911,16 @@ fn test() {
             }
         }
 
-        /*
-                println!("t.len()={} re-doing walk test", t.len());
-                t.walk(&10, &mut |(k, _): &(usize, usize)| {
-                    if *k <= 50 {
-                        print!("{:?};", k);
-                        false
-                    } else {
-                        true
-                    }
-                });
-                println!();
-        */
+        println!("t.len()={} re-doing walk test", t.len());
+        t.walk(&10, &mut |(k, _): &(usize, usize)| {
+            if *k <= 50 {
+                print!("{:?};", k);
+                false
+            } else {
+                true
+            }
+        });
+        println!();
 
         println!("doing retain test - retain only keys divisible by 5");
         t.retain(|k, _v| k % 5 == 0);
