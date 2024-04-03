@@ -511,6 +511,103 @@ where
     }
 }
 
+use std::fmt;
+use std::fmt::Debug;
+impl<K: Debug, V: Debug> Debug for BTreeMap<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+#[cfg(feature = "serde")]
+use serde::{
+    de::{MapAccess, Visitor},
+    ser::SerializeMap,
+    Deserialize, Deserializer, Serialize,
+};
+
+#[cfg(feature = "serde")]
+impl<K, V> Serialize for BTreeMap<K, V>
+where
+    K: serde::Serialize,
+    V: serde::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.len()))?;
+        for (k, v) in self {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+use std::marker::PhantomData;
+
+#[cfg(feature = "serde")]
+struct BTreeMapVisitor<K, V> {
+    marker: PhantomData<fn() -> BTreeMap<K, V>>,
+}
+
+#[cfg(feature = "serde")]
+impl<K, V> BTreeMapVisitor<K, V> {
+    fn new() -> Self {
+        BTreeMapVisitor {
+            marker: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, K, V> Visitor<'de> for BTreeMapVisitor<K, V>
+where
+    K: Deserialize<'de> + Ord,
+    V: Deserialize<'de>,
+{
+    // The type that our Visitor is going to produce.
+    type Value = BTreeMap<K, V>;
+
+    // Format a message stating what data this Visitor expects to receive.
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("BTreeMap")
+    }
+
+    // Deserialize MyMap from an abstract "map" provided by the
+    // Deserializer. The MapAccess input is a callback provided by
+    // the Deserializer to let us see each entry in the map.
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut map = BTreeMap::new();
+
+        while let Some((key, value)) = access.next_entry()? {
+            map.insert(key, value);
+        }
+
+        Ok(map)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, K, V> Deserialize<'de> for BTreeMap<K, V>
+where
+    K: Deserialize<'de> + Ord,
+    V: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Instantiate our Visitor and ask the Deserializer to drive
+        // it over the input data, resulting in an instance of MyMap.
+        deserializer.deserialize_map(BTreeMapVisitor::new())
+    }
+}
+
 struct InsertCtx<K, V> {
     value: Option<V>,
     split: Option<Split<K, V>>,
