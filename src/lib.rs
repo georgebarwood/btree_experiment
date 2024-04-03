@@ -28,6 +28,12 @@ where
     (left, right)
 }
 
+fn split<T>(v: &mut Vec<T>, at: usize, capacity: usize) -> Vec<T> {
+    let mut result = Vec::with_capacity(capacity);
+    result.extend(v.drain(at..));
+    result
+}
+
 /// BTreeMap similar to [std::collections::BTreeMap].
 pub struct BTreeMap<K, V> {
     len: usize,
@@ -487,6 +493,21 @@ where
     }
 }
 
+impl<K, Q, V> std::ops::Index<&Q> for BTreeMap<K, V>
+where
+    K: Borrow<Q> + Ord,
+    Q: Ord + ?Sized,
+{
+    type Output = V;
+
+    /// Returns a reference to the value corresponding to the supplied key.
+    ///
+    /// Panics if the key is not present in the `BTreeMap`.
+    fn index(&self, key: &Q) -> &V {
+        self.get(key).expect("no entry found for key")
+    }
+}
+
 /// Entry in BTreeMap, returned by [BTreeMap::entry].
 pub enum Entry<'a, K, V> {
     /// Vacant entry - map doesn't yet contain key.
@@ -690,7 +711,7 @@ enum Tree<K, V> {
 
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Tree::L(Leaf(Vec::new()))
+        Tree::L(Leaf(Vec::with_capacity(LEAF_FULL)))
     }
 }
 
@@ -947,7 +968,7 @@ impl<K, V> Leaf<K, V> {
     }
 
     fn split(&mut self) -> Split<K, V> {
-        let right = Tree::L(Self(self.0.split_off(LEAF_SPLIT)));
+        let right = Tree::L(Self(split(&mut self.0, LEAF_SPLIT, LEAF_FULL)));
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -1239,8 +1260,8 @@ impl<K, V> NonLeaf<K, V> {
 
     fn split(&mut self) -> Split<K, V> {
         let right = Self {
-            v: self.v.split_off(NON_LEAF_SPLIT),
-            c: self.c.split_off(NON_LEAF_SPLIT),
+            v: split(&mut self.v, NON_LEAF_SPLIT, NON_LEAF_FULL),
+            c: split(&mut self.c, NON_LEAF_SPLIT, NON_LEAF_FULL + 1),
         };
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
@@ -1836,15 +1857,15 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
 fn test() {
-    let mut t = BTreeMap::<usize, usize>::default();
+    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
     let n = 1000000;
 
-    for i in 0..n {
+    for i in (0..n).rev() {
         t.insert(i, i);
     }
     println!("t.len()={}", t.len());
 
-    if true {
+    if false {
         assert!(t.first_key_value().unwrap().0 == &0);
         assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
