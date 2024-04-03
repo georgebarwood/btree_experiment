@@ -119,13 +119,21 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Ord,
     {
-        match self.entry(key) {
-            Entry::Occupied(mut e) => Some(e.insert(value)),
-            Entry::Vacant(e) => {
-                e.insert(value);
-                None
-            }
+        /*
+                match self.entry(key) {
+                    Entry::Occupied(mut e) => Some(e.insert(value)),
+                    Entry::Vacant(e) => {
+                        e.insert(value);
+                        None
+                    }
+                }
+        */
+        let (split, result) = self.tree.insert(key, value);
+        if let Some(split) = split {
+            self.tree.new_root(split);
         }
+        self.len += 1;
+        result
     }
 
     /// Does the map have an entry for the specified key.
@@ -716,6 +724,16 @@ impl<K, V> Default for Tree<K, V> {
 }
 
 impl<K, V> Tree<K, V> {
+    fn insert(&mut self, key: K, value: V) -> (Option<Split<K, V>>, Option<V>)
+    where
+        K: Ord,
+    {
+        match self {
+            Tree::L(leaf) => leaf.insert(key, value),
+            Tree::NL(nonleaf) => nonleaf.insert(key, value),
+        }
+    }
+
     fn prepare_insert(&mut self, pos: &mut PosVec, level: usize) -> Option<Split<K, V>> {
         match self {
             Tree::L(leaf) => leaf.prepare_insert(pos),
@@ -967,10 +985,47 @@ impl<K, V> Leaf<K, V> {
         self.0.len() >= LEAF_FULL
     }
 
-    fn split(&mut self) -> Split<K, V> {
-        let right = Tree::L(Self(split(&mut self.0, LEAF_SPLIT, LEAF_FULL)));
+    fn split(&mut self) -> ((K, V), Vec<(K, V)>) {
+        let right = split(&mut self.0, LEAF_SPLIT, LEAF_FULL);
         let med = self.0.pop().unwrap();
         (med, right)
+    }
+
+    fn insert(&mut self, key: K, value: V) -> (Option<Split<K, V>>, Option<V>)
+    where
+        K: Ord,
+    {
+        let mut i = 0;
+        while i < self.0.len() {
+            match self.0[i].0.cmp(&key) {
+                Ordering::Less => {
+                    i += 1;
+                }
+                Ordering::Greater => {
+                    break;
+                }
+                Ordering::Equal => {
+                    return (
+                        None,
+                        Some(std::mem::replace(&mut self.0[i], (key, value)).1),
+                    )
+                }
+            }
+        }
+        if self.full() {
+            let (med, mut right) = self.split();
+            if key > med.0 {
+                i -= LEAF_SPLIT;
+                right.insert(i, (key, value));
+            } else {
+                self.0.insert(i, (key, value));
+            }
+            let right = Tree::L(Self(right));
+            (Some((med, right)), None)
+        } else {
+            self.0.insert(i, (key, value));
+            (None, None)
+        }
     }
 
     fn prepare_insert(&mut self, pos: &mut PosVec) -> Option<Split<K, V>> {
@@ -984,7 +1039,9 @@ impl<K, V> Leaf<K, V> {
             pos[level] -= LEAF_SPLIT as u8;
             pos[level - 1] += 1;
         }
-        Some(self.split())
+        let (med, right) = self.split();
+        let right = Tree::L(Self(right));
+        Some((med, right))
     }
 
     fn skip<Q>(&self, to: &Q) -> usize
@@ -1265,6 +1322,39 @@ impl<K, V> NonLeaf<K, V> {
         };
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
+    }
+
+    fn insert(&mut self, key: K, value: V) -> (Option<Split<K, V>>, Option<V>)
+    where
+        K: Ord,
+    {
+        let mut i = 0;
+        while i < self.v.len() {
+            match self.v[i].0.cmp(&key) {
+                Ordering::Equal => {
+                    return (
+                        None,
+                        Some(std::mem::replace(&mut self.v[i], (key, value)).1),
+                    )
+                }
+                Ordering::Less => {
+                    i += 1;
+                }
+                Ordering::Greater => {
+                    break;
+                }
+            }
+        }
+        let (split, old_value) = self.c[i].insert(key, value);
+        if let Some((med, right)) = split {
+            self.v.insert(i, med);
+            self.c.insert(i + 1, right);
+        }
+        if self.full() {
+            (Some(self.split()), old_value)
+        } else {
+            (None, old_value)
+        }
     }
 
     fn prepare_insert(&mut self, pos: &mut PosVec, mut level: usize) -> Option<Split<K, V>> {
