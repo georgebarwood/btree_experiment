@@ -119,21 +119,16 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Ord,
     {
-        /*
-                match self.entry(key) {
-                    Entry::Occupied(mut e) => Some(e.insert(value)),
-                    Entry::Vacant(e) => {
-                        e.insert(value);
-                        None
-                    }
-                }
-        */
-        let (split, result) = self.tree.insert(key, value);
-        if let Some(split) = split {
+        let mut x = InsertCtx {
+            value: Some(value),
+            split: None,
+        };
+        self.tree.insert(key, &mut x);
+        if let Some(split) = x.split {
             self.tree.new_root(split);
         }
         self.len += 1;
-        result
+        x.value
     }
 
     /// Does the map have an entry for the specified key.
@@ -516,6 +511,11 @@ where
     }
 }
 
+struct InsertCtx<K, V> {
+    value: Option<V>,
+    split: Option<Split<K, V>>,
+}
+
 /// Entry in BTreeMap, returned by [BTreeMap::entry].
 pub enum Entry<'a, K, V> {
     /// Vacant entry - map doesn't yet contain key.
@@ -724,13 +724,13 @@ impl<K, V> Default for Tree<K, V> {
 }
 
 impl<K, V> Tree<K, V> {
-    fn insert(&mut self, key: K, value: V) -> (Option<Split<K, V>>, Option<V>)
+    fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
     where
         K: Ord,
     {
         match self {
-            Tree::L(leaf) => leaf.insert(key, value),
-            Tree::NL(nonleaf) => nonleaf.insert(key, value),
+            Tree::L(leaf) => leaf.insert(key, x),
+            Tree::NL(nonleaf) => nonleaf.insert(key, x),
         }
     }
 
@@ -991,7 +991,7 @@ impl<K, V> Leaf<K, V> {
         (med, right)
     }
 
-    fn insert(&mut self, key: K, value: V) -> (Option<Split<K, V>>, Option<V>)
+    fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
     where
         K: Ord,
     {
@@ -1005,13 +1005,13 @@ impl<K, V> Leaf<K, V> {
                     break;
                 }
                 Ordering::Equal => {
-                    return (
-                        None,
-                        Some(std::mem::replace(&mut self.0[i], (key, value)).1),
-                    )
+                    let value = x.value.take().unwrap();
+                    x.value = Some(std::mem::replace(&mut self.0[i], (key, value)).1);
+                    return;
                 }
             }
         }
+        let value = x.value.take().unwrap();
         if self.full() {
             let (med, mut right) = self.split();
             if key > med.0 {
@@ -1021,10 +1021,9 @@ impl<K, V> Leaf<K, V> {
                 self.0.insert(i, (key, value));
             }
             let right = Tree::L(Self(right));
-            (Some((med, right)), None)
+            x.split = Some((med, right));
         } else {
             self.0.insert(i, (key, value));
-            (None, None)
         }
     }
 
@@ -1324,7 +1323,7 @@ impl<K, V> NonLeaf<K, V> {
         (med, Tree::NL(right))
     }
 
-    fn insert(&mut self, key: K, value: V) -> (Option<Split<K, V>>, Option<V>)
+    fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
     where
         K: Ord,
     {
@@ -1332,10 +1331,9 @@ impl<K, V> NonLeaf<K, V> {
         while i < self.v.len() {
             match self.v[i].0.cmp(&key) {
                 Ordering::Equal => {
-                    return (
-                        None,
-                        Some(std::mem::replace(&mut self.v[i], (key, value)).1),
-                    )
+                    let value = x.value.take().unwrap();
+                    x.value = Some(std::mem::replace(&mut self.v[i], (key, value)).1);
+                    return;
                 }
                 Ordering::Less => {
                     i += 1;
@@ -1345,15 +1343,13 @@ impl<K, V> NonLeaf<K, V> {
                 }
             }
         }
-        let (split, old_value) = self.c[i].insert(key, value);
-        if let Some((med, right)) = split {
+        self.c[i].insert(key, x);
+        if let Some((med, right)) = x.split.take() {
             self.v.insert(i, med);
             self.c.insert(i + 1, right);
-        }
-        if self.full() {
-            (Some(self.split()), old_value)
-        } else {
-            (None, old_value)
+            if self.full() {
+                x.split = Some(self.split());
+            }
         }
     }
 
