@@ -1179,7 +1179,10 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        self.0.iter_mut().find(|x| x.0.borrow() == key)
+        match self.0.search(|x| x.0.borrow().cmp(&key)) {
+            Ok(i) => Some(self.0.ixm(i)),
+            Err(_i) => None,
+        }
     }
 
     fn pop_first(&mut self) -> Option<(K, V)> {
@@ -1257,16 +1260,15 @@ impl<K, V> NonLeaf<K, V> {
         self.v.len() == NON_LEAF_FULL
     }
 
-    fn skip<Q>(&self, to: &Q) -> usize
+    fn skip<Q>(&self, key: &Q) -> usize
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut i = 0;
-        while i < self.v.len() && self.v.ix(i).0.borrow() <= to {
-            i += 1;
+        match self.v.search(|x| x.0.borrow().cmp(&key)) {
+            Ok(i) => i,
+            Err(i) => i,
         }
-        i
     }
 
     fn get_pos_mut(&mut self, pos: &[u8], level: usize) -> &mut (K, V) {
