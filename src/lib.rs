@@ -1023,22 +1023,22 @@ impl<K, V> Tree<K, V> {
         match self {
             Tree::L(leaf) => {
                 for i in leaf.skip(start)..leaf.0.len() {
-                    if action(&leaf.0[i]) {
+                    if action(leaf.0.ix(i)) {
                         return true;
                     }
                 }
             }
             Tree::NL(nonleaf) => {
                 let i = nonleaf.skip(start);
-                if nonleaf.c[i].walk(start, action) {
+                if nonleaf.c.ix(i).walk(start, action) {
                     return true;
                 }
                 for i in i..nonleaf.v.len() {
-                    let v = &nonleaf.v[i];
+                    let v = nonleaf.v.ix(i);
                     if start <= v.0.borrow() && action(v) {
                         return true;
                     }
-                    if nonleaf.c[i + 1].walk(start, action) {
+                    if nonleaf.c.ix(i + 1).walk(start, action) {
                         return true;
                     }
                 }
@@ -1056,22 +1056,22 @@ impl<K, V> Tree<K, V> {
         match self {
             Tree::L(leaf) => {
                 for i in leaf.skip(start)..leaf.0.len() {
-                    if action(&mut leaf.0[i]) {
+                    if action(leaf.0.ixm(i)) {
                         return true;
                     }
                 }
             }
             Tree::NL(nonleaf) => {
                 let i = nonleaf.skip(start);
-                if i < nonleaf.c.len() && nonleaf.c[i].walk_mut(start, action) {
+                if i < nonleaf.c.len() && nonleaf.c.ixm(i).walk_mut(start, action) {
                     return true;
                 }
                 for i in i..nonleaf.v.len() {
-                    let v = &mut nonleaf.v[i];
+                    let v = nonleaf.v.ixm(i);
                     if start <= v.0.borrow() && action(v) {
                         return true;
                     }
-                    if nonleaf.c[i + 1].walk_mut(start, action) {
+                    if nonleaf.c.ixm(i + 1).walk_mut(start, action) {
                         return true;
                     }
                 }
@@ -1111,7 +1111,7 @@ impl<K, V> Leaf<K, V> {
                 }
                 Ordering::Equal => {
                     let value = x.value.take().unwrap();
-                    x.value = Some(std::mem::replace(&mut self.0[m], (key, value)).1);
+                    x.value = Some(std::mem::replace(self.0.ixm(m), (key, value)).1);
                     return;
                 }
             }
@@ -1155,18 +1155,18 @@ impl<K, V> Leaf<K, V> {
     {
         // ToDo : binary search.
         let mut i = 0;
-        while i < self.0.len() && self.0[i].0.borrow() < to {
+        while i < self.0.len() && self.0.ix(i).0.borrow() < to {
             i += 1;
         }
         i
     }
 
     fn get_pos_mut(&mut self, pos: &[u8], level: usize) -> &mut (K, V) {
-        &mut self.0[pos[level] as usize]
+        self.0.ixm(pos[level] as usize)
     }
 
     fn get_pos(&self, pos: &[u8], level: usize) -> &(K, V) {
-        &self.0[pos[level] as usize]
+        self.0.ix(pos[level] as usize)
     }
 
     fn remove_pos(&mut self, pos: &[u8], level: usize) -> (K, V) {
@@ -1204,7 +1204,7 @@ impl<K, V> Leaf<K, V> {
     fn do_insert(&mut self, pos: &[u8], level: usize, key: K, value: V) -> &mut (K, V) {
         let i = pos[level] as usize;
         self.0.insert(i, (key, value));
-        &mut self.0[i]
+        self.0.ixm(i)
     }
 
     fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
@@ -1239,7 +1239,7 @@ impl<K, V> Leaf<K, V> {
         if self.0.is_empty() {
             None
         } else {
-            let x = &self.0[0];
+            let x = self.0.ix(0);
             Some((&x.0, &x.1))
         }
     }
@@ -1248,7 +1248,7 @@ impl<K, V> Leaf<K, V> {
         if self.0.is_empty() {
             None
         } else {
-            let x = &self.0[self.0.len() - 1];
+            let x = self.0.ix(self.0.len() - 1);
             Some((&x.0, &x.1))
         }
     }
@@ -1257,7 +1257,7 @@ impl<K, V> Leaf<K, V> {
         if self.0.is_empty() {
             None
         } else {
-            let x = &mut self.0[0];
+            let x = self.0.ixm(0);
             Some((&mut x.0, &mut x.1))
         }
     }
@@ -1266,8 +1266,8 @@ impl<K, V> Leaf<K, V> {
         if self.0.is_empty() {
             None
         } else {
-            let len = self.0.len();
-            let x = &mut self.0[len];
+            let ix = self.0.len() - 1;
+            let x = self.0.ixm(ix);
             Some((&mut x.0, &mut x.1))
         }
     }
@@ -1317,11 +1317,11 @@ impl<K, V> Leaf<K, V> {
         R: RangeBounds<T>,
     {
         let mut x = 0;
-        while x < self.0.len() && !range.contains(self.0[x].0.borrow()) {
+        while x < self.0.len() && !range.contains(self.0.ix(x).0.borrow()) {
             x += 1;
         }
         let mut y = self.0.len();
-        while y > x && !range.contains(self.0[y - 1].0.borrow()) {
+        while y > x && !range.contains(self.0.ix(y - 1).0.borrow()) {
             y -= 1;
         }
         IterLeafMut(self.0[x..y].iter_mut())
@@ -1338,7 +1338,7 @@ impl<K, V> Leaf<K, V> {
             x += 1;
         }
         let mut y = self.0.len();
-        while y > x && !range.contains(self.0[y - 1].0.borrow()) {
+        while y > x && !range.contains(self.0.ix(y - 1).0.borrow()) {
             y -= 1;
         }
         IterLeaf(self.0[x..y].iter())
@@ -1361,7 +1361,7 @@ impl<K, V> NonLeaf<K, V> {
         Q: Ord + ?Sized,
     {
         let mut i = 0;
-        while i < self.v.len() && self.v[i].0.borrow() <= to {
+        while i < self.v.len() && self.v.ix(i).0.borrow() <= to {
             i += 1;
         }
         i
@@ -1370,32 +1370,32 @@ impl<K, V> NonLeaf<K, V> {
     fn get_pos_mut(&mut self, pos: &[u8], level: usize) -> &mut (K, V) {
         let i = pos[level] as usize;
         if level + 1 == pos.len() {
-            &mut self.v[i]
+            self.v.ixm(i)
         } else {
-            self.c[i].get_pos_mut(pos, level + 1)
+            self.c.ixm(i).get_pos_mut(pos, level + 1)
         }
     }
 
     fn get_pos(&self, pos: &[u8], level: usize) -> &(K, V) {
         let i = pos[level] as usize;
         if level + 1 == pos.len() {
-            &self.v[i]
+            self.v.ix(i)
         } else {
-            self.c[i].get_pos(pos, level + 1)
+            self.c.ix(i).get_pos(pos, level + 1)
         }
     }
 
     fn remove_pos(&mut self, pos: &[u8], level: usize) -> (K, V) {
         let i = pos[level] as usize;
         if level + 1 == pos.len() {
-            if let Some(x) = self.c[i].pop_last() {
-                std::mem::replace(&mut self.v[i], x)
+            if let Some(x) = self.c.ixm(i).pop_last() {
+                std::mem::replace(self.v.ixm(i), x)
             } else {
                 self.c.remove(i);
                 self.v.remove(i)
             }
         } else {
-            self.c[i].remove_pos(pos, level + 1)
+            self.c.ixm(i).remove_pos(pos, level + 1)
         }
     }
 
@@ -1422,7 +1422,7 @@ impl<K, V> NonLeaf<K, V> {
             }
         }
         pos.ix.push(i as u8);
-        self.c[i].find_position(key, pos);
+        self.c.ix(i).find_position(key, pos);
     }
 
     fn split(&mut self) -> Split<K, V> {
@@ -1450,12 +1450,12 @@ impl<K, V> NonLeaf<K, V> {
                 }
                 Ordering::Equal => {
                     let value = x.value.take().unwrap();
-                    x.value = Some(std::mem::replace(&mut self.v[m], (key, value)).1);
+                    x.value = Some(std::mem::replace(self.v.ixm(m), (key, value)).1);
                     return;
                 }
             }
         }
-        self.c[i].insert(key, x);
+        self.c.ixm(i).insert(key, x);
         if let Some((med, right)) = x.split.take() {
             self.v.insert(i, med);
             self.c.insert(i + 1, right);
@@ -1467,7 +1467,7 @@ impl<K, V> NonLeaf<K, V> {
 
     fn prepare_insert(&mut self, pos: &mut PosVec, mut level: usize) -> Option<Split<K, V>> {
         let i = pos[level] as usize;
-        if let Some((med, right)) = self.c[i].prepare_insert(pos, level + 1) {
+        if let Some((med, right)) = self.c.ixm(i).prepare_insert(pos, level + 1) {
             self.v.insert(i, med);
             self.c.insert(i + 1, right);
         }
@@ -1488,7 +1488,7 @@ impl<K, V> NonLeaf<K, V> {
 
     fn do_insert(&mut self, pos: &[u8], level: usize, key: K, value: V) -> &mut (K, V) {
         let i = pos[level] as usize;
-        self.c[i].do_insert(pos, level + 1, key, value)
+        self.c.ixm(i).do_insert(pos, level + 1, key, value)
     }
 
     fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
@@ -1500,22 +1500,22 @@ impl<K, V> NonLeaf<K, V> {
         while i < self.v.len() {
             match self.v.ix(i).0.borrow().cmp(key) {
                 Ordering::Equal => {
-                    if let Some(x) = self.c[i].pop_last() {
-                        return Some(std::mem::replace(&mut self.v[i], x));
+                    if let Some(x) = self.c.ixm(i).pop_last() {
+                        return Some(std::mem::replace(self.v.ixm(i), x));
                     } else {
                         self.c.remove(i);
                         return Some(self.v.remove(i));
                     }
                 }
                 Ordering::Greater => {
-                    return self.c[i].remove(key);
+                    return self.c.ixm(i).remove(key);
                 }
                 Ordering::Less => {
                     i += 1;
                 }
             }
         }
-        self.c[i].remove(key)
+        self.c.ixm(i).remove(key)
     }
 
     fn retain<F>(&mut self, f: &mut F) -> usize
@@ -1525,12 +1525,12 @@ impl<K, V> NonLeaf<K, V> {
         let mut removed = 0;
         let mut i = 0;
         while i < self.v.len() {
-            removed += self.c[i].retain(f);
-            let e = &mut self.v[i];
+            removed += self.c.ixm(i).retain(f);
+            let e = self.v.ixm(i);
             if !f(&e.0, &mut e.1) {
                 removed += 1;
-                if let Some(x) = self.c[i].pop_last() {
-                    let _ = std::mem::replace(&mut self.v[i], x);
+                if let Some(x) = self.c.ixm(i).pop_last() {
+                    let _ = std::mem::replace(self.v.ixm(i), x);
                     i += 1;
                 } else {
                     self.c.remove(i);
@@ -1540,7 +1540,7 @@ impl<K, V> NonLeaf<K, V> {
                 i += 1;
             }
         }
-        removed += self.c[i].retain(f);
+        removed += self.c.ixm(i).retain(f);
         removed
     }
 
@@ -1553,34 +1553,34 @@ impl<K, V> NonLeaf<K, V> {
         while i < self.v.len() {
             match self.v.ix(i).0.borrow().cmp(key) {
                 Ordering::Equal => {
-                    return Some((&self.v[i].0, &self.v[i].1));
+                    return Some((&self.v.ix(i).0, &self.v.ix(i).1));
                 }
                 Ordering::Greater => {
-                    return self.c[i].get_key_value(key);
+                    return self.c.ix(i).get_key_value(key);
                 }
                 Ordering::Less => {
                     i += 1;
                 }
             }
         }
-        self.c[i].get_key_value(key)
+        self.c.ix(i).get_key_value(key)
     }
 
     fn first_key_value(&self) -> Option<(&K, &V)> {
-        self.c[0].first_key_value()
+        self.c.ix(0).first_key_value()
     }
 
     fn last_key_value(&self) -> Option<(&K, &V)> {
-        self.c[self.c.len() - 1].last_key_value()
+        self.c.ix(self.c.len() - 1).last_key_value()
     }
 
     fn first_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        self.c[0].first_key_value_mut()
+        self.c.ixm(0).first_key_value_mut()
     }
 
     fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
         let len = self.c.len();
-        self.c[len - 1].last_key_value_mut()
+        self.c.ixm(len - 1).last_key_value_mut()
     }
 
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
@@ -1592,7 +1592,7 @@ impl<K, V> NonLeaf<K, V> {
         while i < self.v.len() {
             match self.v.ix(i).0.borrow().cmp(key) {
                 Ordering::Equal => {
-                    return Some( self.v.ixm(i) );
+                    return Some(self.v.ixm(i));
                 }
                 Ordering::Greater => {
                     return self.c.ixm(i).get_mut(key);
@@ -1606,7 +1606,7 @@ impl<K, V> NonLeaf<K, V> {
     }
 
     fn pop_first(&mut self) -> Option<(K, V)> {
-        if let Some(x) = self.c[0].pop_first() {
+        if let Some(x) = self.c.ixm(0).pop_first() {
             Some(x)
         } else if self.v.is_empty() {
             None
@@ -1618,7 +1618,7 @@ impl<K, V> NonLeaf<K, V> {
 
     fn pop_last(&mut self) -> Option<(K, V)> {
         let i = self.c.len();
-        if let Some(x) = self.c[i - 1].pop_last() {
+        if let Some(x) = self.c.ixm(i - 1).pop_last() {
             Some(x)
         } else if self.v.is_empty() {
             None
