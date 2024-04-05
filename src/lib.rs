@@ -223,22 +223,22 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get references to first key and value.
     pub fn first_key_value(&self) -> Option<(&K, &V)> {
-        self.tree.first_key_value()
+        self.tree.iter().next()
     }
 
     /// Gets references to last key and value.
     pub fn last_key_value(&self) -> Option<(&K, &V)> {
-        self.tree.last_key_value()
+        self.tree.iter().next_back()
     }
 
-    /// Get mutal references to first key and value.
+    /// Get mutable references to first key and value.
     pub fn first_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        self.tree.first_key_value_mut()
+        self.tree.iter_mut().next()
     }
 
-    /// Gets mutable references to last key and value.
+    /// Get mutable references to last key and value.
     pub fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        self.tree.last_key_value_mut()
+        self.tree.iter_mut().next_back()
     }
 
     /// Moves all elements from `other` into `self`, leaving `other` empty.
@@ -913,34 +913,6 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn first_key_value(&self) -> Option<(&K, &V)> {
-        match self {
-            Tree::L(leaf) => leaf.first_key_value(),
-            Tree::NL(nonleaf) => nonleaf.first_key_value(),
-        }
-    }
-
-    fn last_key_value(&self) -> Option<(&K, &V)> {
-        match self {
-            Tree::L(leaf) => leaf.last_key_value(),
-            Tree::NL(nonleaf) => nonleaf.last_key_value(),
-        }
-    }
-
-    fn first_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        match self {
-            Tree::L(leaf) => leaf.first_key_value_mut(),
-            Tree::NL(nonleaf) => nonleaf.first_key_value_mut(),
-        }
-    }
-
-    fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        match self {
-            Tree::L(leaf) => leaf.last_key_value_mut(),
-            Tree::NL(nonleaf) => nonleaf.last_key_value_mut(),
-        }
-    }
-
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
     where
         K: Borrow<Q> + Ord,
@@ -1235,43 +1207,6 @@ impl<K, V> Leaf<K, V> {
         None
     }
 
-    fn first_key_value(&self) -> Option<(&K, &V)> {
-        if self.0.is_empty() {
-            None
-        } else {
-            let x = self.0.ix(0);
-            Some((&x.0, &x.1))
-        }
-    }
-
-    fn last_key_value(&self) -> Option<(&K, &V)> {
-        if self.0.is_empty() {
-            None
-        } else {
-            let x = self.0.ix(self.0.len() - 1);
-            Some((&x.0, &x.1))
-        }
-    }
-
-    fn first_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        if self.0.is_empty() {
-            None
-        } else {
-            let x = self.0.ixm(0);
-            Some((&mut x.0, &mut x.1))
-        }
-    }
-
-    fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        if self.0.is_empty() {
-            None
-        } else {
-            let ix = self.0.len() - 1;
-            let x = self.0.ixm(ix);
-            Some((&mut x.0, &mut x.1))
-        }
-    }
-
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
     where
         K: Borrow<Q> + Ord,
@@ -1564,23 +1499,6 @@ impl<K, V> NonLeaf<K, V> {
             }
         }
         self.c.ix(i).get_key_value(key)
-    }
-
-    fn first_key_value(&self) -> Option<(&K, &V)> {
-        self.c.ix(0).first_key_value()
-    }
-
-    fn last_key_value(&self) -> Option<(&K, &V)> {
-        self.c.ix(self.c.len() - 1).last_key_value()
-    }
-
-    fn first_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        self.c.ixm(0).first_key_value_mut()
-    }
-
-    fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
-        let len = self.c.len();
-        self.c.ixm(len - 1).last_key_value_mut()
     }
 
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
