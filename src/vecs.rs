@@ -128,6 +128,24 @@ impl<T> BasicVec<T> {
     }
 }
 
+/// In debug mode or feature unsafe-optim not enabled, same as assert! otherwise unsafe compiler hint.
+#[cfg(any(debug_assertions, not(feature = "unsafe-optim")))]
+macro_rules! unsafe_assert {
+    ( $cond: expr ) => {
+        assert!($cond)
+    };
+}
+
+/// In debug mode or feature unsafe-optim not enabled, same as debug_assert! otherwise unsafe compiler hint.
+#[cfg(all(not(debug_assertions), feature = "unsafe-optim"))]
+macro_rules! unsafe_assert {
+    ( $cond: expr ) => {
+        if !$cond {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+    };
+}
+
 /// Vec with fixed capacity.
 pub struct FixedCapVec<const CAP: usize, T> {
     len: usize,
@@ -159,7 +177,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
     ///
     #[inline]
     pub fn push(&mut self, value: T) {
-        debug_assert!(self.len < CAP);
+        unsafe_assert!(self.len < CAP);
         unsafe {
             self.v.set(self.len, value);
         }
@@ -179,7 +197,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
 
     ///
     pub fn insert(&mut self, at: usize, value: T) {
-        debug_assert!(at <= self.len && self.len < CAP);
+        unsafe_assert!(at <= self.len && self.len < CAP);
         unsafe {
             if at < self.len {
                 self.v.move_self(at, at + 1, self.len - at);
@@ -191,7 +209,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
 
     ///
     pub fn remove(&mut self, at: usize) -> T {
-        debug_assert!(at < self.len);
+        unsafe_assert!(at < self.len);
         unsafe {
             let result = self.v.get(at);
             self.v.move_self(at + 1, at, self.len - at - 1);
@@ -202,7 +220,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
 
     ///
     pub fn split_off(&mut self, at: usize) -> Self {
-        debug_assert!(at < self.len);
+        unsafe_assert!(at < self.len);
         let len = self.len - at;
         let mut result = Self::new();
         unsafe {
@@ -240,14 +258,14 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
     /// Get reference to ith element.
     #[inline]
     pub fn ix(&self, ix: usize) -> &T {
-        debug_assert!(ix < self.len);
+        unsafe_assert!(ix < self.len);
         unsafe { &*self.v.ix(ix) }
     }
 
     /// Get mutable reference to ith element.
     #[inline]
     pub fn ixm(&mut self, ix: usize) -> &mut T {
-        debug_assert!(ix < self.len);
+        unsafe_assert!(ix < self.len);
         unsafe { &mut *self.v.ix(ix) }
     }
 

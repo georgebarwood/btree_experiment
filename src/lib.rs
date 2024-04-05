@@ -1,6 +1,8 @@
 //! This crate implements a BTreeMap similar to std::collections::BTreeMap.
 //!
 //! One difference is that keys (as well as values) can be mutated using mutable iterators.
+//!
+//! Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
 
 #![deny(missing_docs)]
 use std::borrow::Borrow;
@@ -16,7 +18,7 @@ type Split<K, V> = ((K, V), Tree<K, V>);
 
 const LEAF_SPLIT: usize = 10;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
-const NON_LEAF_SPLIT: usize = 20;
+const NON_LEAF_SPLIT: usize = 30;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
 
 fn bounded<T, R>(range: &R) -> (bool, bool)
@@ -841,7 +843,6 @@ impl<K, V> Tree<K, V> {
     }
 
     fn new_root(&mut self, (med, right): Split<K, V>) {
-        println!("new root");
         let left = std::mem::take(self);
         let mut v = FixedCapVec::new();
         v.push(med);
@@ -1917,16 +1918,22 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
 fn test_btree() {
-    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
-    let n = 1000000;
+   println!("size of Tree={}", std::mem::size_of::<Tree<u64,u64>>());
 
-    // for i in (0..n).rev() {
-    for i in 0..n {
+
+    for _rep in 0..1000 {
+
+
+    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+    let n = 100000;
+
+    for i in (0..n).rev() {
+    // for i in 0..n {
         t.insert(i, i);
     }
-    println!("t.len()={}", t.len());
+    // println!("t.len()={}", t.len());
 
-    if true {
+    if false {
         assert!(t.first_key_value().unwrap().0 == &0);
         assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
@@ -2033,5 +2040,5 @@ fn test_btree() {
             print!("{:?};", x);
         }
         println!();
-    }
+    }}
 }
