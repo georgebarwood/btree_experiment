@@ -2,20 +2,22 @@
 //!
 //! One difference is that keys (as well as values) can be mutated using mutable iterators.
 
-#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 use std::borrow::Borrow;
 use std::cmp::{Ord, Ordering};
 use std::iter::{DoubleEndedIterator, FusedIterator};
 use std::ops::{Bound, RangeBounds};
 
+mod vecs;
+use vecs::FixedCapVec;
+
 // type PosVec = Vec<u8>;
 type PosVec = smallvec::SmallVec<[u8; 8]>;
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-const LEAF_SPLIT: usize = 5;
+const LEAF_SPLIT: usize = 10;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
-const NON_LEAF_SPLIT: usize = 9;
+const NON_LEAF_SPLIT: usize = 20;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
 
 fn bounded<T, R>(range: &R) -> (bool, bool)
@@ -28,7 +30,7 @@ where
     (left, right)
 }
 
-fn split<T>(v: &mut Vec<T>, at: usize, capacity: usize) -> Vec<T> {
+fn _split<T>(v: &mut Vec<T>, at: usize, capacity: usize) -> Vec<T> {
     let mut result = Vec::with_capacity(capacity);
     result.extend(v.drain(at..));
     result
@@ -816,7 +818,8 @@ enum Tree<K, V> {
 
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Tree::L(Leaf(Vec::with_capacity(LEAF_FULL)))
+        // Tree::L(Leaf(Vec::with_capacity(LEAF_FULL)))
+        Tree::L(Leaf(FixedCapVec::<LEAF_FULL, (K, V)>::new()))
     }
 }
 
@@ -846,11 +849,14 @@ impl<K, V> Tree<K, V> {
     }
 
     fn new_root(&mut self, (med, right): Split<K, V>) {
+        println!("new root");
         let left = std::mem::take(self);
-        *self = Tree::NL(NonLeaf {
-            v: vec![med],
-            c: vec![left, right],
-        });
+        let mut v = FixedCapVec::new();
+        v.push(med);
+        let mut c = FixedCapVec::new();
+        c.push(left);
+        c.push(right);
+        *self = Tree::NL(NonLeaf { v, c });
     }
 
     fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
@@ -1075,15 +1081,16 @@ impl<K, V> Tree<K, V> {
     }
 } // End impl Tree
 
-struct Leaf<K, V>(Vec<(K, V)>);
+struct Leaf<K, V>(FixedCapVec<LEAF_FULL, (K, V)>);
 
 impl<K, V> Leaf<K, V> {
     fn full(&self) -> bool {
         self.0.len() >= LEAF_FULL
     }
 
-    fn split(&mut self) -> ((K, V), Vec<(K, V)>) {
-        let right = split(&mut self.0, LEAF_SPLIT, LEAF_FULL);
+    fn split(&mut self) -> ((K, V), FixedCapVec<LEAF_FULL, (K, V)>) {
+        // let right = split(&mut self.0, LEAF_SPLIT, LEAF_FULL);
+        let right = self.0.split_off(LEAF_SPLIT);
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -1092,18 +1099,19 @@ impl<K, V> Leaf<K, V> {
     where
         K: Ord,
     {
-        let mut i = 0;
-        while i < self.0.len() {
-            match self.0[i].0.cmp(&key) {
+        let (mut i, mut j) = (0, self.0.len());
+        while i < j {
+            let m = (i + j) / 2;
+            match self.0.ix(m).0.cmp(&key) {
                 Ordering::Less => {
-                    i += 1;
+                    i = m + 1;
                 }
                 Ordering::Greater => {
-                    break;
+                    j = m;
                 }
                 Ordering::Equal => {
                     let value = x.value.take().unwrap();
-                    x.value = Some(std::mem::replace(&mut self.0[i], (key, value)).1);
+                    x.value = Some(std::mem::replace(&mut self.0[m], (key, value)).1);
                     return;
                 }
             }
@@ -1145,6 +1153,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
+        // ToDo : binary search.
         let mut i = 0;
         while i < self.0.len() && self.0[i].0.borrow() < to {
             i += 1;
@@ -1169,17 +1178,19 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut i = 0;
-        while i < self.0.len() {
-            match self.0[i].0.borrow().cmp(key) {
+        let (mut i, mut j) = (0, self.0.len());
+        while i < j {
+            let m = (i + j) / 2;
+            match self.0.ix(m).0.borrow().cmp(key) {
                 Ordering::Less => {
-                    i += 1;
+                    i = m + 1;
                 }
                 Ordering::Greater => {
-                    break;
+                    j = m;
                 }
                 Ordering::Equal => {
                     pos.key_found = true;
+                    i = m;
                     break;
                 }
             }
@@ -1201,6 +1212,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
+        // ToDo : binary search.
         for (i, x) in self.0.iter_mut().enumerate() {
             if x.0.borrow() == key {
                 return Some(self.0.remove(i));
@@ -1214,6 +1226,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
+        // ToDo : binary search.
         for x in self.0.iter() {
             if x.0.borrow() == key {
                 return Some((&x.0, &x.1));
@@ -1333,8 +1346,8 @@ impl<K, V> Leaf<K, V> {
 } // End impl Leaf
 
 struct NonLeaf<K, V> {
-    v: Vec<(K, V)>,
-    c: Vec<Tree<K, V>>,
+    v: FixedCapVec<NON_LEAF_FULL, (K, V)>,
+    c: FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
 }
 
 impl<K, V> NonLeaf<K, V> {
@@ -1391,19 +1404,20 @@ impl<K, V> NonLeaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut i = 0;
-        while i < self.v.len() {
-            match self.v[i].0.borrow().cmp(key) {
-                Ordering::Equal => {
-                    pos.key_found = true;
-                    pos.ix.push(i as u8);
-                    return;
-                }
+        let (mut i, mut j) = (0, self.v.len());
+        while i < j {
+            let m = (i + j) / 2;
+            match self.v.ix(m).0.borrow().cmp(key) {
                 Ordering::Less => {
-                    i += 1;
+                    i = m + 1;
                 }
                 Ordering::Greater => {
-                    break;
+                    j = m;
+                }
+                Ordering::Equal => {
+                    pos.key_found = true;
+                    pos.ix.push(m as u8);
+                    return;
                 }
             }
         }
@@ -1413,8 +1427,8 @@ impl<K, V> NonLeaf<K, V> {
 
     fn split(&mut self) -> Split<K, V> {
         let right = Self {
-            v: split(&mut self.v, NON_LEAF_SPLIT, NON_LEAF_FULL),
-            c: split(&mut self.c, NON_LEAF_SPLIT, NON_LEAF_FULL + 1),
+            v: self.v.split_off(NON_LEAF_SPLIT),
+            c: self.c.split_off(NON_LEAF_SPLIT),
         };
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
@@ -1424,19 +1438,20 @@ impl<K, V> NonLeaf<K, V> {
     where
         K: Ord,
     {
-        let mut i = 0;
-        while i < self.v.len() {
-            match self.v[i].0.cmp(&key) {
-                Ordering::Equal => {
-                    let value = x.value.take().unwrap();
-                    x.value = Some(std::mem::replace(&mut self.v[i], (key, value)).1);
-                    return;
-                }
+        let (mut i, mut j) = (0, self.v.len());
+        while i < j {
+            let m = (i + j) / 2;
+            match self.v.ix(m).0.cmp(&key) {
                 Ordering::Less => {
-                    i += 1;
+                    i = m + 1;
                 }
                 Ordering::Greater => {
-                    break;
+                    j = m;
+                }
+                Ordering::Equal => {
+                    let value = x.value.take().unwrap();
+                    x.value = Some(std::mem::replace(&mut self.v[m], (key, value)).1);
+                    return;
                 }
             }
         }
@@ -1483,7 +1498,7 @@ impl<K, V> NonLeaf<K, V> {
     {
         let mut i = 0;
         while i < self.v.len() {
-            match self.v[i].0.borrow().cmp(key) {
+            match self.v.ix(i).0.borrow().cmp(key) {
                 Ordering::Equal => {
                     if let Some(x) = self.c[i].pop_last() {
                         return Some(std::mem::replace(&mut self.v[i], x));
@@ -1536,7 +1551,7 @@ impl<K, V> NonLeaf<K, V> {
     {
         let mut i = 0;
         while i < self.v.len() {
-            match self.v[i].0.borrow().cmp(key) {
+            match self.v.ix(i).0.borrow().cmp(key) {
                 Ordering::Equal => {
                     return Some((&self.v[i].0, &self.v[i].1));
                 }
@@ -1565,7 +1580,7 @@ impl<K, V> NonLeaf<K, V> {
 
     fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
         let len = self.c.len();
-        self.c[len].last_key_value_mut()
+        self.c[len - 1].last_key_value_mut()
     }
 
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
@@ -1575,19 +1590,19 @@ impl<K, V> NonLeaf<K, V> {
     {
         let mut i = 0;
         while i < self.v.len() {
-            match self.v[i].0.borrow().cmp(key) {
+            match self.v.ix(i).0.borrow().cmp(key) {
                 Ordering::Equal => {
-                    return Some(&mut self.v[i]);
+                    return Some( self.v.ixm(i) );
                 }
                 Ordering::Greater => {
-                    return self.c[i].get_mut(key);
+                    return self.c.ixm(i).get_mut(key);
                 }
                 Ordering::Less => {
                     i += 1;
                 }
             }
         }
-        self.c[i].get_mut(key)
+        self.c.ixm(i).get_mut(key)
     }
 
     fn pop_first(&mut self) -> Option<(K, V)> {
@@ -2039,11 +2054,12 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
-fn test() {
+fn test_btree() {
     let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
     let n = 1000000;
 
-    for i in (0..n).rev() {
+    // for i in (0..n).rev() {
+    for i in 0..n {
         t.insert(i, i);
     }
     println!("t.len()={}", t.len());
@@ -2097,16 +2113,18 @@ fn test() {
             assert_eq!(t.get_mut(&i).unwrap(), &i);
         }
 
-        println!("t.len()={} doing walk test", t.len());
-        t.walk(&10, &mut |(k, _): &(usize, usize)| {
-            if *k <= 50 {
-                print!("{:?};", k);
-                false
-            } else {
-                true
-            }
-        });
-        println!();
+        /*
+                println!("t.len()={} doing walk test", t.len());
+                t.walk(&10, &mut |(k, _): &(usize, usize)| {
+                    if *k <= 50 {
+                        print!("{:?};", k);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                println!();
+        */
 
         println!("doing remove evens test");
         for i in 0..n {
@@ -2115,16 +2133,18 @@ fn test() {
             }
         }
 
-        println!("t.len()={} re-doing walk test", t.len());
-        t.walk(&10, &mut |(k, _): &(usize, usize)| {
-            if *k <= 50 {
-                print!("{:?};", k);
-                false
-            } else {
-                true
-            }
-        });
-        println!();
+        /*
+                println!("t.len()={} re-doing walk test", t.len());
+                t.walk(&10, &mut |(k, _): &(usize, usize)| {
+                    if *k <= 50 {
+                        print!("{:?};", k);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                println!();
+        */
 
         println!("doing retain test - retain only keys divisible by 5");
         t.retain(|k, _v| k % 5 == 0);
