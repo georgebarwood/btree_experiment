@@ -11,7 +11,6 @@ use std::ops::{Bound, RangeBounds};
 mod vecs;
 use vecs::FixedCapVec;
 
-// type PosVec = Vec<u8>;
 type PosVec = smallvec::SmallVec<[u8; 8]>;
 type Split<K, V> = ((K, V), Tree<K, V>);
 
@@ -28,12 +27,6 @@ where
     let left = !matches!(range.start_bound(), Bound::Unbounded);
     let right = !matches!(range.end_bound(), Bound::Unbounded);
     (left, right)
-}
-
-fn _split<T>(v: &mut Vec<T>, at: usize, capacity: usize) -> Vec<T> {
-    let mut result = Vec::with_capacity(capacity);
-    result.extend(v.drain(at..));
-    result
 }
 
 /// BTreeMap similar to [std::collections::BTreeMap].
@@ -818,7 +811,6 @@ enum Tree<K, V> {
 
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        // Tree::L(Leaf(Vec::with_capacity(LEAF_FULL)))
         Tree::L(Leaf(FixedCapVec::<LEAF_FULL, (K, V)>::new()))
     }
 }
@@ -1061,7 +1053,6 @@ impl<K, V> Leaf<K, V> {
     }
 
     fn split(&mut self) -> ((K, V), FixedCapVec<LEAF_FULL, (K, V)>) {
-        // let right = split(&mut self.0, LEAF_SPLIT, LEAF_FULL);
         let right = self.0.split_off(LEAF_SPLIT);
         let med = self.0.pop().unwrap();
         (med, right)
@@ -1933,7 +1924,7 @@ fn test_btree() {
     }
     println!("t.len()={}", t.len());
 
-    if false {
+    if true {
         assert!(t.first_key_value().unwrap().0 == &0);
         assert!(t.last_key_value().unwrap().0 == &(n - 1));
 

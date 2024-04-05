@@ -1,11 +1,11 @@
 use std::{
     alloc,
     alloc::Layout,
+    cmp::Ordering,
     mem,
     ops::{Deref, DerefMut},
     ptr,
     ptr::NonNull,
-    cmp::Ordering,
 };
 
 /// Basic vec, does not have own capacity or length, just a pointer to memory.
@@ -253,21 +253,22 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
 
     /// Same as binary_search_by, but for some obscure reason this seems to be faster.
     pub fn search<F>(&self, mut f: F) -> Result<usize, usize>
-    where F: FnMut(& T) -> Ordering,
+    where
+        F: FnMut(&T) -> Ordering,
     {
-       let (mut i,mut j) = (0, self.len);
-       while i < j
-       {
-          let m = (i + j) / 2; // Don't worry about overflow considering vecs are fixed size (and small).
-          match f( self.ix(m) )
-          {
-             Ordering::Equal => { return Ok(m); }
-             Ordering::Less => i = m + 1,
-             Ordering::Greater => j = m
-          }
-       }
-       Err(i)
-    } 
+        let (mut i, mut j) = (0, self.len);
+        while i < j {
+            let m = (i + j) / 2; // Don't worry about overflow considering vecs are fixed size (and small).
+            match f(self.ix(m)) {
+                Ordering::Equal => {
+                    return Ok(m);
+                }
+                Ordering::Less => i = m + 1,
+                Ordering::Greater => j = m,
+            }
+        }
+        Err(i)
+    }
 }
 
 impl<const CAP: usize, T> Deref for FixedCapVec<CAP, T> {
