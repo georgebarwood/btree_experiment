@@ -10,10 +10,14 @@ use std::cmp::{Ord, Ordering};
 use std::iter::{DoubleEndedIterator, FusedIterator};
 use std::ops::{Bound, RangeBounds};
 
+// Vector types.
 mod vecs;
-use vecs::FixedCapVec;
-
+use vecs::FixedCapVec as Vec;
+type LeafVec<K, V> = Vec<LEAF_FULL, (K, V)>;
+type NonLeafVec<K, V> = Vec<NON_LEAF_FULL, (K, V)>;
+type NonLeafChildVec<K, V> = Vec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
 type PosVec = smallvec::SmallVec<[u8; 8]>;
+
 type Split<K, V> = ((K, V), Tree<K, V>);
 
 const LEAF_SPLIT: usize = 10;
@@ -813,7 +817,7 @@ enum Tree<K, V> {
 
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Tree::L(Leaf(FixedCapVec::<LEAF_FULL, (K, V)>::new()))
+        Tree::L(Leaf(Vec::new()))
     }
 }
 
@@ -844,9 +848,9 @@ impl<K, V> Tree<K, V> {
 
     fn new_root(&mut self, (med, right): Split<K, V>) {
         let left = std::mem::take(self);
-        let mut v = FixedCapVec::new();
+        let mut v = Vec::new();
         v.push(med);
-        let mut c = FixedCapVec::new();
+        let mut c = Vec::new();
         c.push(left);
         c.push(right);
         *self = Tree::NL(NonLeaf { v, c });
@@ -1046,14 +1050,14 @@ impl<K, V> Tree<K, V> {
     }
 } // End impl Tree
 
-struct Leaf<K, V>(FixedCapVec<LEAF_FULL, (K, V)>);
+struct Leaf<K, V>(LeafVec<K, V>);
 
 impl<K, V> Leaf<K, V> {
     fn full(&self) -> bool {
         self.0.len() >= LEAF_FULL
     }
 
-    fn split(&mut self) -> ((K, V), FixedCapVec<LEAF_FULL, (K, V)>) {
+    fn split(&mut self) -> ((K, V), LeafVec<K, V>) {
         let right = self.0.split_off(LEAF_SPLIT);
         let med = self.0.pop().unwrap();
         (med, right)
@@ -1108,7 +1112,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(&key)) {
+        match self.0.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => i,
             Err(i) => i,
         }
@@ -1155,7 +1159,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(&key)) {
+        match self.0.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => Some(self.0.remove(i)),
             Err(_i) => None,
         }
@@ -1166,7 +1170,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(&key)) {
+        match self.0.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => {
                 let x = self.0.ix(i);
                 Some((&x.0, &x.1))
@@ -1180,7 +1184,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(&key)) {
+        match self.0.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => Some(self.0.ixm(i)),
             Err(_i) => None,
         }
@@ -1252,8 +1256,8 @@ impl<K, V> Leaf<K, V> {
 } // End impl Leaf
 
 struct NonLeaf<K, V> {
-    v: FixedCapVec<NON_LEAF_FULL, (K, V)>,
-    c: FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
+    v: NonLeafVec<K, V>,
+    c: NonLeafChildVec<K, V>,
 }
 
 impl<K, V> NonLeaf<K, V> {
@@ -1266,7 +1270,7 @@ impl<K, V> NonLeaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.v.search(|x| x.0.borrow().cmp(&key)) {
+        match self.v.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => i,
             Err(i) => i,
         }
@@ -1338,7 +1342,6 @@ impl<K, V> NonLeaf<K, V> {
             Ok(i) => {
                 let value = x.value.take().unwrap();
                 x.value = Some(std::mem::replace(self.v.ixm(i), (key, value)).1);
-                return;
             }
             Err(i) => {
                 self.c.ixm(i).insert(key, x);
@@ -1384,7 +1387,7 @@ impl<K, V> NonLeaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.v.search(|x| x.0.borrow().cmp(&key)) {
+        match self.v.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => {
                 if let Some(x) = self.c.ixm(i).pop_last() {
                     Some(std::mem::replace(self.v.ixm(i), x))
@@ -1918,127 +1921,123 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
 fn test_btree() {
-   println!("size of Tree={}", std::mem::size_of::<Tree<u64,u64>>());
+    for _rep in 0..100 {
+        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let n = 100000;
 
+        for i in (0..n).rev() {
+            // for i in 0..n {
+            t.insert(i, i);
+        }
+        // println!("t.len()={}", t.len());
 
-    for _rep in 0..1000 {
+        if true {
+            assert!(t.first_key_value().unwrap().0 == &0);
+            assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
+            println!("doing for x in & test");
+            for x in &t {
+                if *x.0 < 50 {
+                    print!("{:?};", x);
+                }
+            }
+            println!();
 
-    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
-    let n = 100000;
+            println!("doing for x in &mut test");
+            for x in &mut t {
+                *x.1 *= 1;
+                if *x.0 < 50 {
+                    print!("{:?};", x);
+                }
+            }
+            println!();
 
-    for i in (0..n).rev() {
-    // for i in 0..n {
-        t.insert(i, i);
+            println!("doing range mut test");
+
+            for x in t.range_mut(20..=60000).rev() {
+                if *x.0 < 50 {
+                    print!("{:?};", x);
+                }
+            }
+            println!("done range mut test");
+
+            println!("t.len()={} doing range non-mut test", t.len());
+
+            for x in t.range(20..=60000).rev() {
+                if *x.0 < 50 {
+                    print!("{:?};", x);
+                }
+            }
+            println!("done range non-mut test");
+
+            println!("doing get test");
+            for i in 0..n {
+                assert_eq!(t.get(&i).unwrap(), &i);
+            }
+
+            println!("doing get_mut test");
+            for i in 0..n {
+                assert_eq!(t.get_mut(&i).unwrap(), &i);
+            }
+
+            /*
+                    println!("t.len()={} doing walk test", t.len());
+                    t.walk(&10, &mut |(k, _): &(usize, usize)| {
+                        if *k <= 50 {
+                            print!("{:?};", k);
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                    println!();
+            */
+
+            println!("doing remove evens test");
+            for i in 0..n {
+                if i % 2 == 0 {
+                    assert_eq!(t.remove(&i).unwrap(), i);
+                }
+            }
+
+            /*
+                    println!("t.len()={} re-doing walk test", t.len());
+                    t.walk(&10, &mut |(k, _): &(usize, usize)| {
+                        if *k <= 50 {
+                            print!("{:?};", k);
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                    println!();
+            */
+
+            println!("doing retain test - retain only keys divisible by 5");
+            t.retain(|k, _v| k % 5 == 0);
+
+            println!("Consuming iterator test");
+            for x in t {
+                if x.0 < 50 {
+                    print!("{:?};", x);
+                }
+            }
+            println!();
+
+            println!("FromIter collect test");
+            let a = [1, 2, 3];
+            let map: BTreeMap<i32, i32> = a.iter().map(|&x| (x, x * x)).collect();
+            for x in map {
+                print!("{:?};", x);
+            }
+            println!();
+
+            println!("From test");
+            let map = BTreeMap::from([(1, 2), (3, 4)]);
+            for x in map {
+                print!("{:?};", x);
+            }
+            println!();
+        }
     }
-    // println!("t.len()={}", t.len());
-
-    if false {
-        assert!(t.first_key_value().unwrap().0 == &0);
-        assert!(t.last_key_value().unwrap().0 == &(n - 1));
-
-        println!("doing for x in & test");
-        for x in &t {
-            if *x.0 < 50 {
-                print!("{:?};", x);
-            }
-        }
-        println!("");
-
-        println!("doing for x in &mut test");
-        for x in &mut t {
-            *x.1 *= 1;
-            if *x.0 < 50 {
-                print!("{:?};", x);
-            }
-        }
-        println!("");
-
-        println!("doing range mut test");
-
-        for x in t.range_mut(20..=60000).rev() {
-            if *x.0 < 50 {
-                print!("{:?};", x);
-            }
-        }
-        println!("done range mut test");
-
-        println!("t.len()={} doing range non-mut test", t.len());
-
-        for x in t.range(20..=60000).rev() {
-            if *x.0 < 50 {
-                print!("{:?};", x);
-            }
-        }
-        println!("done range non-mut test");
-
-        println!("doing get test");
-        for i in 0..n {
-            assert_eq!(t.get(&i).unwrap(), &i);
-        }
-
-        println!("doing get_mut test");
-        for i in 0..n {
-            assert_eq!(t.get_mut(&i).unwrap(), &i);
-        }
-
-        /*
-                println!("t.len()={} doing walk test", t.len());
-                t.walk(&10, &mut |(k, _): &(usize, usize)| {
-                    if *k <= 50 {
-                        print!("{:?};", k);
-                        false
-                    } else {
-                        true
-                    }
-                });
-                println!();
-        */
-
-        println!("doing remove evens test");
-        for i in 0..n {
-            if i % 2 == 0 {
-                assert_eq!(t.remove(&i).unwrap(), i);
-            }
-        }
-
-        /*
-                println!("t.len()={} re-doing walk test", t.len());
-                t.walk(&10, &mut |(k, _): &(usize, usize)| {
-                    if *k <= 50 {
-                        print!("{:?};", k);
-                        false
-                    } else {
-                        true
-                    }
-                });
-                println!();
-        */
-
-        println!("doing retain test - retain only keys divisible by 5");
-        t.retain(|k, _v| k % 5 == 0);
-
-        println!("Consuming iterator test");
-        for x in t {
-            if x.0 < 50 {
-                print!("{:?};", x);
-            }
-        }
-        println!();
-
-        println!("FromIter collect test");
-        let a = [1, 2, 3];
-        let map: BTreeMap<i32, i32> = a.iter().map(|&x| (x, x * x)).collect();
-        for x in map {
-            print!("{:?};", x);
-        }
-        println!();
-
-        println!("From test");
-        let map = BTreeMap::from([(1, 2), (3, 4)]);
-        for x in map {
-            print!("{:?};", x);
-        }
-        println!();
-    }}
 }
