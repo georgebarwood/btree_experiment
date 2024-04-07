@@ -12,15 +12,15 @@ use std::ops::{Bound, RangeBounds};
 
 // Vector types.
 mod vecs;
-use vecs::FixedCapVec as Vec;
-type LeafVec<K, V> = Vec<LEAF_FULL, (K, V)>;
-type NonLeafVec<K, V> = Vec<NON_LEAF_FULL, (K, V)>;
-type NonLeafChildVec<K, V> = Vec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
+use vecs::FixedCapVec;
+type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
+type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
+type NonLeafChildVec<K, V> = FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
 type PosVec = smallvec::SmallVec<[u8; 8]>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-const LEAF_SPLIT: usize = 10;
+const LEAF_SPLIT: usize = 20;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
 const NON_LEAF_SPLIT: usize = 30;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
@@ -30,8 +30,41 @@ where
     T: Ord + ?Sized,
     R: RangeBounds<T>,
 {
-    let left = !matches!(range.start_bound(), Bound::Unbounded);
-    let right = !matches!(range.end_bound(), Bound::Unbounded);
+    use Bound::*;
+    let (left, right) = match (range.start_bound(), range.end_bound()) {
+        (Unbounded, Unbounded) => (false, false),
+        (Unbounded, Included(_)) => (false, true),
+        (Unbounded, Excluded(_)) => (false, true),
+        (Included(_), Unbounded) => (true, false),
+        (Included(s), Included(e)) => {
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+            (true, true)
+        }
+        (Included(s), Excluded(e)) => {
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+            (true, true)
+        }
+        (Excluded(_), Unbounded) => (true, false),
+        (Excluded(s), Included(e)) => {
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+            (true, true)
+        }
+        (Excluded(s), Excluded(e)) => {
+            if e == s {
+                panic!("range start and end are equal and excluded in BTreeMap")
+            }
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+            (true, true)
+        }
+    };
     (left, right)
 }
 
@@ -48,6 +81,9 @@ impl<K, V> Default for BTreeMap<K, V> {
 }
 
 impl<K, V> BTreeMap<K, V> {
+    #[cfg(test)]
+    fn check(&self) {}
+
     /// Returns a new, empty map.
     pub fn new() -> Self {
         Self {
@@ -93,7 +129,7 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get first Entry.
     pub fn first_entry(&mut self) -> Option<OccupiedEntry<'_, K, V>> {
-        if !self.is_empty() {
+        if self.is_empty() {
             None
         } else {
             Some(OccupiedEntry {
@@ -105,7 +141,7 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get last Entry.
     pub fn last_entry(&mut self) -> Option<OccupiedEntry<'_, K, V>> {
-        if !self.is_empty() {
+        if self.is_empty() {
             None
         } else {
             Some(OccupiedEntry {
@@ -128,7 +164,9 @@ impl<K, V> BTreeMap<K, V> {
         if let Some(split) = x.split {
             self.tree.new_root(split);
         }
-        self.len += 1;
+        if x.value.is_none() {
+            self.len += 1;
+        }
         x.value
     }
 
@@ -864,7 +902,7 @@ enum Tree<K, V> {
 
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Tree::L(Leaf(Vec::new()))
+        Tree::L(Leaf(FixedCapVec::new()))
     }
 }
 
@@ -895,9 +933,9 @@ impl<K, V> Tree<K, V> {
 
     fn new_root(&mut self, (med, right): Split<K, V>) {
         let left = std::mem::take(self);
-        let mut v = Vec::new();
+        let mut v = FixedCapVec::new();
         v.push(med);
-        let mut c = Vec::new();
+        let mut c = FixedCapVec::new();
         c.push(left);
         c.push(right);
         *self = Tree::NL(NonLeaf { v, c });
@@ -1907,20 +1945,41 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
+fn basic_range_test() {
+    let mut map = BTreeMap::<usize, usize>::new();
+    for i in 0..100 {
+        map.insert(i, i);
+    }
+
+    for j in 0..100 {
+        assert_eq!(map.range(0..=j).count(), j + 1);
+    }
+}
+
+#[test]
 fn test_entry() {
-    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::new();
+    for _rep in 0..100 {
+        let n = 100000;
 
-    t.entry(1).or_insert(2);
+        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::new();
 
-    assert_eq!(t[&1], 2);
-    *t.entry(1).or_default() += 1;
-    assert_eq!(t[&1], 3);
+        t.entry(1).or_insert(2);
+
+        assert_eq!(t[&1], 2);
+        *t.entry(1).or_default() += 1;
+        assert_eq!(t[&1], 3);
+
+        for i in 0..n {
+            t.entry(i).or_insert(i);
+            // t.insert( i, i );
+        }
+    }
 }
 
 #[test]
 fn test_btree() {
     for _rep in 0..1000 {
-        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = 10000;
 
         for i in (0..n).rev() {
@@ -2039,3 +2098,6 @@ fn test_btree() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
