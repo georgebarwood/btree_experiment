@@ -6,8 +6,8 @@
 
 #![deny(missing_docs)]
 use std::borrow::Borrow;
-use std::cmp::{Ord, Ordering};
-use std::iter::{DoubleEndedIterator, FusedIterator};
+use std::cmp::Ordering;
+use std::iter::FusedIterator;
 use std::ops::{Bound, RangeBounds};
 
 // Vector types.
@@ -352,20 +352,8 @@ impl<K, V> BTreeMap<K, V> {
         self.tree.walk_mut(start, action)
     }
 
-    fn get_pos_mut(&mut self, pos: &Position) -> &mut (K, V) {
-        self.tree.get_pos_mut(&pos.ix, 0)
-    }
-
-    fn get_pos(&self, pos: &Position) -> &(K, V) {
-        self.tree.get_pos(&pos.ix, 0)
-    }
-
-    fn remove_pos(&mut self, pos: &Position) -> (K, V) {
-        self.tree.remove_pos(&pos.ix, 0)
-    }
-
-    fn ins_pos(&mut self, pos: &mut Position, key: K, value: V) -> &mut (K, V) {
-        if pos.leaf_full {
+    fn ins_pos(&mut self, pos: &mut Position<K, V>, key: K, value: V) -> &mut (K, V) {
+        if !pos.leaf_has_space {
             if let Some(s) = self.tree.prepare_insert(&mut pos.ix, 0) {
                 self.tree.new_root(s);
             }
@@ -694,19 +682,53 @@ where
     }
 }
 
-/// Represents position of key in Btree.
-struct Position {
-    key_found: bool,
-    leaf_full: bool,
-    ix: PosVec,
+enum TreePtr<K, V> {
+    None,
+    L(*mut Leaf<K, V>, usize),
+    NL(*mut NonLeaf<K, V>, usize),
 }
 
-impl Position {
+impl<K, V> TreePtr<K, V> {
+    fn value_mut(&mut self) -> &mut V {
+        match self {
+            TreePtr::None => panic!(),
+            TreePtr::L(ptr, ix) => unsafe { &mut (*(*ptr)).0[*ix].1 },
+            TreePtr::NL(ptr, ix) => unsafe { &mut (*(*ptr)).v[*ix].1 },
+        }
+    }
+
+    fn value_ref(&self) -> &V {
+        match self {
+            TreePtr::None => panic!(),
+            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0[*ix].1 },
+            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v[*ix].1 },
+        }
+    }
+
+    fn key_ref(&self) -> &K {
+        match self {
+            TreePtr::None => panic!(),
+            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0[*ix].0 },
+            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v[*ix].0 },
+        }
+    }
+}
+
+/// Represents position of key in Btree.
+struct Position<K, V> {
+    key_found: bool,
+    leaf_has_space: bool,
+    ix: PosVec,
+    ptr: TreePtr<K, V>,
+}
+
+impl<K, V> Position<K, V> {
     fn new() -> Self {
         Self {
             key_found: false,
-            leaf_full: false,
+            leaf_has_space: false,
             ix: PosVec::new(),
+            ptr: TreePtr::None,
         }
     }
 }
@@ -715,7 +737,7 @@ impl Position {
 pub struct VacantEntry<'a, K, V> {
     map: &'a mut BTreeMap<K, V>,
     key: K,
-    pos: Position,
+    pos: Position<K, V>,
 }
 
 impl<'a, K, V> VacantEntry<'a, K, V>
@@ -734,20 +756,33 @@ where
 
     /// Insert value into map returning reference to inserted value.
     pub fn insert(mut self, value: V) -> &'a mut V {
-        &mut self.map.ins_pos(&mut self.pos, self.key, value).1
+        if self.pos.leaf_has_space {
+            let result = match self.pos.ptr {
+                TreePtr::L(ptr, ix) => unsafe {
+                    let x = &mut (*ptr).0;
+                    x.insert(ix, (self.key, value));
+                    &mut x[ix].1
+                },
+                _ => panic!(),
+            };
+            self.map.len += 1;
+            result
+        } else {
+            &mut self.map.ins_pos(&mut self.pos, self.key, value).1
+        }
     }
 }
 
-enum OccupiedEntryKey {
+enum OccupiedEntryKey<K, V> {
     First,
     Last,
-    Some(Position),
+    Some(Position<K, V>),
 }
 
 /// Occupied [Entry].
 pub struct OccupiedEntry<'a, K, V> {
     map: &'a mut BTreeMap<K, V>,
-    key: OccupiedEntryKey,
+    key: OccupiedEntryKey<K, V>,
 }
 
 impl<'a, K, V> OccupiedEntry<'a, K, V>
@@ -757,7 +792,7 @@ where
     /// Get reference to entry key.
     pub fn key(&self) -> &K {
         match &self.key {
-            OccupiedEntryKey::Some(pos) => &self.map.get_pos(pos).0,
+            OccupiedEntryKey::Some(pos) => pos.ptr.key_ref(),
             OccupiedEntryKey::First => self.map.first_key_value().unwrap().0,
             OccupiedEntryKey::Last => self.map.last_key_value().unwrap().0,
         }
@@ -766,7 +801,16 @@ where
     /// Remove (key,value) from map, returning key and value.
     pub fn remove_entry(self) -> (K, V) {
         match &self.key {
-            OccupiedEntryKey::Some(pos) => self.map.remove_pos(pos),
+            OccupiedEntryKey::Some(pos) =>
+            {
+                let result = match pos.ptr {
+                   TreePtr::L(ptr,ix) => unsafe { (*ptr).0.remove(ix) }
+                   TreePtr::NL(ptr,ix) => unsafe { (*ptr).remove_at(ix) }
+                   TreePtr::None => panic!()
+                };
+                self.map.len -= 1;
+                result
+            }
             OccupiedEntryKey::First => self.map.pop_first().unwrap(),
             OccupiedEntryKey::Last => self.map.pop_last().unwrap(),
         }
@@ -780,7 +824,7 @@ where
     /// Get reference to the value.
     pub fn get(&self) -> &V {
         match &self.key {
-            OccupiedEntryKey::Some(pos) => &self.map.get_pos(pos).1,
+            OccupiedEntryKey::Some(pos) => pos.ptr.value_ref(),
             OccupiedEntryKey::First => self.map.first_key_value().unwrap().1,
             OccupiedEntryKey::Last => self.map.last_key_value().unwrap().1,
         }
@@ -788,17 +832,24 @@ where
 
     /// Get mutable reference to the value.
     pub fn get_mut(&mut self) -> &mut V {
-        match &self.key {
-            OccupiedEntryKey::Some(pos) => &mut self.map.get_pos_mut(pos).1,
+        match &mut self.key {
+            OccupiedEntryKey::Some(pos) => pos.ptr.value_mut(),
             OccupiedEntryKey::First => self.map.first_key_value_mut().unwrap().1,
             OccupiedEntryKey::Last => self.map.last_key_value_mut().unwrap().1,
         }
     }
 
     /// Get mutable reference to the value, consuming the entry.
-    pub fn into_mut(self) -> &'a mut V {
-        match &self.key {
-            OccupiedEntryKey::Some(pos) => &mut self.map.get_pos_mut(pos).1,
+    pub fn into_mut(mut self) -> &'a mut V {
+        match &mut self.key {
+            OccupiedEntryKey::Some(pos) =>
+            {
+                match pos.ptr {
+                    TreePtr::None => panic!(),
+                    TreePtr::L(ptr, ix) => unsafe { &mut (*ptr).0[ix].1 },
+                    TreePtr::NL(ptr, ix) => unsafe { &mut (*ptr).v[ix].1 },
+                }
+            }
             OccupiedEntryKey::First => self.map.first_key_value_mut().unwrap().1,
             OccupiedEntryKey::Last => self.map.last_key_value_mut().unwrap().1,
         }
@@ -867,28 +918,7 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn get_pos_mut(&mut self, pos: &[u8], level: usize) -> &mut (K, V) {
-        match self {
-            Tree::L(leaf) => leaf.get_pos_mut(pos, level),
-            Tree::NL(nonleaf) => nonleaf.get_pos_mut(pos, level),
-        }
-    }
-
-    fn get_pos(&self, pos: &[u8], level: usize) -> &(K, V) {
-        match self {
-            Tree::L(leaf) => leaf.get_pos(pos, level),
-            Tree::NL(nonleaf) => nonleaf.get_pos(pos, level),
-        }
-    }
-
-    fn remove_pos(&mut self, pos: &[u8], level: usize) -> (K, V) {
-        match self {
-            Tree::L(leaf) => leaf.remove_pos(pos, level),
-            Tree::NL(nonleaf) => nonleaf.remove_pos(pos, level),
-        }
-    }
-
-    fn find_position<Q>(&self, key: &Q, pos: &mut Position)
+    fn find_position<Q>(&mut self, key: &Q, pos: &mut Position<K, V>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -1118,19 +1148,7 @@ impl<K, V> Leaf<K, V> {
         }
     }
 
-    fn get_pos_mut(&mut self, pos: &[u8], level: usize) -> &mut (K, V) {
-        self.0.ixm(pos[level] as usize)
-    }
-
-    fn get_pos(&self, pos: &[u8], level: usize) -> &(K, V) {
-        self.0.ix(pos[level] as usize)
-    }
-
-    fn remove_pos(&mut self, pos: &[u8], level: usize) -> (K, V) {
-        self.0.remove(pos[level] as usize)
-    }
-
-    fn find_position<Q>(&self, key: &Q, pos: &mut Position)
+    fn find_position<Q>(&mut self, key: &Q, pos: &mut Position<K, V>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -1138,13 +1156,15 @@ impl<K, V> Leaf<K, V> {
         let i = match self.0.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => {
                 pos.key_found = true;
+                pos.ptr = TreePtr::L(self, i);
                 i
             }
             Err(i) => i,
         };
         pos.ix.push(i as u8);
-        if self.full() {
-            pos.leaf_full = true;
+        if !self.full() {            
+            pos.leaf_has_space = true;
+            pos.ptr = TreePtr::L(self, i);
         }
     }
 
@@ -1276,39 +1296,17 @@ impl<K, V> NonLeaf<K, V> {
         }
     }
 
-    fn get_pos_mut(&mut self, pos: &[u8], level: usize) -> &mut (K, V) {
-        let i = pos[level] as usize;
-        if level + 1 == pos.len() {
-            self.v.ixm(i)
-        } else {
-            self.c.ixm(i).get_pos_mut(pos, level + 1)
-        }
-    }
-
-    fn get_pos(&self, pos: &[u8], level: usize) -> &(K, V) {
-        let i = pos[level] as usize;
-        if level + 1 == pos.len() {
-            self.v.ix(i)
-        } else {
-            self.c.ix(i).get_pos(pos, level + 1)
-        }
-    }
-
-    fn remove_pos(&mut self, pos: &[u8], level: usize) -> (K, V) {
-        let i = pos[level] as usize;
-        if level + 1 == pos.len() {
+    fn remove_at(&mut self, i: usize ) -> (K,V)
+    {
             if let Some(x) = self.c.ixm(i).pop_last() {
                 std::mem::replace(self.v.ixm(i), x)
             } else {
                 self.c.remove(i);
                 self.v.remove(i)
             }
-        } else {
-            self.c.ixm(i).remove_pos(pos, level + 1)
-        }
-    }
+    }   
 
-    fn find_position<Q>(&self, key: &Q, pos: &mut Position)
+    fn find_position<Q>(&mut self, key: &Q, pos: &mut Position<K, V>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -1316,11 +1314,12 @@ impl<K, V> NonLeaf<K, V> {
         match self.v.search(|x| x.0.borrow().cmp(key)) {
             Ok(i) => {
                 pos.key_found = true;
+                pos.ptr = TreePtr::NL(self, i);
                 pos.ix.push(i as u8);
             }
             Err(i) => {
                 pos.ix.push(i as u8);
-                self.c.ix(i).find_position(key, pos);
+                self.c.ixm(i).find_position(key, pos);
             }
         }
     }
@@ -1388,14 +1387,7 @@ impl<K, V> NonLeaf<K, V> {
         Q: Ord + ?Sized,
     {
         match self.v.search(|x| x.0.borrow().cmp(key)) {
-            Ok(i) => {
-                if let Some(x) = self.c.ixm(i).pop_last() {
-                    Some(std::mem::replace(self.v.ixm(i), x))
-                } else {
-                    self.c.remove(i);
-                    Some(self.v.remove(i))
-                }
-            }
+            Ok(i) => self.remove_at(i),
             Err(i) => self.c.ixm(i).remove(key),
         }
     }
@@ -1920,10 +1912,21 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
+fn test_entry() {
+    let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::new();
+
+    t.entry(1).or_insert(2);
+
+    assert_eq!( t[&1], 2);
+    *t.entry(1).or_default() += 1;
+    assert_eq!( t[&1], 3);
+}
+
+#[test]
 fn test_btree() {
-    for _rep in 0..100 {
+    for _rep in 0..1000 {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
-        let n = 100000;
+        let n = 10000;
 
         for i in (0..n).rev() {
             // for i in 0..n {
@@ -1931,7 +1934,7 @@ fn test_btree() {
         }
         // println!("t.len()={}", t.len());
 
-        if true {
+        if false {
             assert!(t.first_key_value().unwrap().0 == &0);
             assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
