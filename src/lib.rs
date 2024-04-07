@@ -1387,7 +1387,7 @@ impl<K, V> NonLeaf<K, V> {
         Q: Ord + ?Sized,
     {
         match self.v.search(|x| x.0.borrow().cmp(key)) {
-            Ok(i) => self.remove_at(i),
+            Ok(i) => Some(self.remove_at(i)),
             Err(i) => self.c.ixm(i).remove(key),
         }
     }

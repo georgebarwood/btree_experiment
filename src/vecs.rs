@@ -143,7 +143,7 @@ macro_rules! safe_assert {
 }
 
 /// Vec with fixed capacity.
-pub struct FixedCapVec<const CAP: usize, T> {
+pub(crate) struct FixedCapVec<const CAP: usize, T> {
     len: usize,
     v: BasicVec<T>,
 }
