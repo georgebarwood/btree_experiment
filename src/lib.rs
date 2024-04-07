@@ -801,12 +801,11 @@ where
     /// Remove (key,value) from map, returning key and value.
     pub fn remove_entry(self) -> (K, V) {
         match &self.key {
-            OccupiedEntryKey::Some(pos) =>
-            {
+            OccupiedEntryKey::Some(pos) => {
                 let result = match pos.ptr {
-                   TreePtr::L(ptr,ix) => unsafe { (*ptr).0.remove(ix) }
-                   TreePtr::NL(ptr,ix) => unsafe { (*ptr).remove_at(ix) }
-                   TreePtr::None => panic!()
+                    TreePtr::L(ptr, ix) => unsafe { (*ptr).0.remove(ix) },
+                    TreePtr::NL(ptr, ix) => unsafe { (*ptr).remove_at(ix) },
+                    TreePtr::None => panic!(),
                 };
                 self.map.len -= 1;
                 result
@@ -842,14 +841,11 @@ where
     /// Get mutable reference to the value, consuming the entry.
     pub fn into_mut(mut self) -> &'a mut V {
         match &mut self.key {
-            OccupiedEntryKey::Some(pos) =>
-            {
-                match pos.ptr {
-                    TreePtr::None => panic!(),
-                    TreePtr::L(ptr, ix) => unsafe { &mut (*ptr).0[ix].1 },
-                    TreePtr::NL(ptr, ix) => unsafe { &mut (*ptr).v[ix].1 },
-                }
-            }
+            OccupiedEntryKey::Some(pos) => match pos.ptr {
+                TreePtr::None => panic!(),
+                TreePtr::L(ptr, ix) => unsafe { &mut (*ptr).0[ix].1 },
+                TreePtr::NL(ptr, ix) => unsafe { &mut (*ptr).v[ix].1 },
+            },
             OccupiedEntryKey::First => self.map.first_key_value_mut().unwrap().1,
             OccupiedEntryKey::Last => self.map.last_key_value_mut().unwrap().1,
         }
@@ -1162,7 +1158,7 @@ impl<K, V> Leaf<K, V> {
             Err(i) => i,
         };
         pos.ix.push(i as u8);
-        if !self.full() {            
+        if !self.full() {
             pos.leaf_has_space = true;
             pos.ptr = TreePtr::L(self, i);
         }
@@ -1296,15 +1292,14 @@ impl<K, V> NonLeaf<K, V> {
         }
     }
 
-    fn remove_at(&mut self, i: usize ) -> (K,V)
-    {
-            if let Some(x) = self.c.ixm(i).pop_last() {
-                std::mem::replace(self.v.ixm(i), x)
-            } else {
-                self.c.remove(i);
-                self.v.remove(i)
-            }
-    }   
+    fn remove_at(&mut self, i: usize) -> (K, V) {
+        if let Some(x) = self.c.ixm(i).pop_last() {
+            std::mem::replace(self.v.ixm(i), x)
+        } else {
+            self.c.remove(i);
+            self.v.remove(i)
+        }
+    }
 
     fn find_position<Q>(&mut self, key: &Q, pos: &mut Position<K, V>)
     where
@@ -1917,9 +1912,9 @@ fn test_entry() {
 
     t.entry(1).or_insert(2);
 
-    assert_eq!( t[&1], 2);
+    assert_eq!(t[&1], 2);
     *t.entry(1).or_default() += 1;
-    assert_eq!( t[&1], 3);
+    assert_eq!(t[&1], 3);
 }
 
 #[test]
