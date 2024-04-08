@@ -1145,7 +1145,7 @@ impl<K, V> Leaf<K, V> {
         let value = x.value.take().unwrap();
         if self.full() {
             let (med, mut right) = self.split();
-            if i > self.0.len() {
+            if i >= LEAF_SPLIT {
                 i -= LEAF_SPLIT;
                 right.insert(i, (key, value));
             } else {
