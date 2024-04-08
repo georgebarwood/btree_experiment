@@ -726,6 +726,9 @@ enum TreePtr<K, V> {
     NL(*mut NonLeaf<K, V>, usize),
 }
 
+unsafe impl<K: Send, V: Send> Send for TreePtr<K,V> {}
+unsafe impl<K: Sync, V: Send> Sync for TreePtr<K,V> {}
+
 impl<K, V> TreePtr<K, V> {
     fn value_mut(&mut self) -> &mut V {
         match self {
@@ -1011,16 +1014,16 @@ impl<K, V> Tree<K, V> {
 
     fn iter_mut(&mut self) -> IterMut<'_, K, V> {
         IterMut(match self {
-            Tree::L(leaf) => Box::new(leaf.iter_mut()),
-            Tree::NL(nonleaf) => Box::new(nonleaf.iter_mut()),
+            Tree::L(x) => IterMutE::L(x.iter_mut()),
+            Tree::NL(x) => IterMutE::NL(Box::new(x.iter_mut())),
         })
     }
 
     fn iter(&self) -> Iter<'_, K, V> {
-        Iter(match self {
-            Tree::L(leaf) => Box::new(leaf.iter()),
-            Tree::NL(nonleaf) => Box::new(nonleaf.iter()),
-        })
+        Iter( match self {
+            Tree::L(x) => IterE::L(x.iter()),
+            Tree::NL(x) => IterE::NL(Box::new(x.iter())),
+        } )
     }
 
     fn range_mut<T, R>(&mut self, range: &R, left: bool, right: bool) -> IterMut<'_, K, V>
@@ -1030,8 +1033,8 @@ impl<K, V> Tree<K, V> {
         R: RangeBounds<T>,
     {
         IterMut(match self {
-            Tree::L(leaf) => Box::new(leaf.range_mut(range)),
-            Tree::NL(nonleaf) => Box::new(nonleaf.range_mut(range, left, right)),
+            Tree::L(x) => IterMutE::L(x.range_mut(range)),
+            Tree::NL(x) => IterMutE::NL(Box::new(x.range_mut(range, left, right))),
         })
     }
 
@@ -1041,10 +1044,10 @@ impl<K, V> Tree<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        Iter(match self {
-            Tree::L(leaf) => Box::new(leaf.range(range)),
-            Tree::NL(nonleaf) => Box::new(nonleaf.range(range, left, right)),
-        })
+        Iter( match self {
+            Tree::L(x) => IterE::L(x.range(range)),
+            Tree::NL(x) => IterE::NL(Box::new(x.range(range, left, right))),
+        } )
     }
 
     fn walk<F, Q>(&self, start: &Q, action: &mut F) -> bool
@@ -1640,43 +1643,75 @@ impl<K, V> NonLeaf<K, V> {
 } // End impl NonLeaf
 
 /// Mutable iterator returned by [BTreeMap::iter_mut], [BTreeMap::range_mut].
-pub struct IterMut<'a, K, V>(Box<dyn 'a + DoubleEndedIterator<Item = (&'a mut K, &'a mut V)>>);
+pub struct IterMut<'a,K,V>(IterMutE<'a,K,V>);
+
+enum IterMutE<'a,K,V> {
+  L(IterLeafMut<'a,K,V>),
+  NL(Box<IterNonLeafMut<'a,K,V>>),
+  EMPTY
+}
 
 impl<'a, K, V> IterMut<'a, K, V> {
     fn empty() -> Self {
-        Self(Box::new(std::iter::empty()))
+        IterMut(IterMutE::EMPTY)
     }
 }
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a mut K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        match &mut self.0
+        {
+          IterMutE::L(x) => x.next(),
+          IterMutE::NL(x) => x.next(),
+          IterMutE::EMPTY => None,
+        }
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.0.next_back()
+        match &mut self.0
+        {
+          IterMutE::L(x) => x.next_back(),
+          IterMutE::NL(x) => x.next_back(),
+          IterMutE::EMPTY => None
+        }
     }
 }
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
 /// Iterator returned by [BTreeMap::iter], [BTreeMap::range].
-pub struct Iter<'a, K, V>(Box<dyn 'a + DoubleEndedIterator<Item = (&'a K, &'a V)>>);
+pub struct Iter<'a,K,V>(IterE<'a,K,V>);
+
+enum IterE<'a,K,V> {
+  L(IterLeaf<'a,K,V>),
+  NL(Box<IterNonLeaf<'a,K,V>>),
+  EMPTY
+}
 
 impl<'a, K, V> Iter<'a, K, V> {
     fn empty() -> Self {
-        Self(Box::new(std::iter::empty()))
+        Iter(IterE::EMPTY)
     }
 }
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        match &mut self.0
+        {
+          IterE::L(x) => x.next(),
+          IterE::NL(x) => x.next(),
+          IterE::EMPTY => None,
+        }
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.0.next_back()
+        match &mut self.0
+        {
+          IterE::L(x) => x.next_back(),
+          IterE::NL(x) => x.next_back(),
+          IterE::EMPTY => None
+        }
     }
 }
 impl<'a, K, V> FusedIterator for Iter<'a, K, V> {}
