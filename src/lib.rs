@@ -726,8 +726,8 @@ enum TreePtr<K, V> {
     NL(*mut NonLeaf<K, V>, usize),
 }
 
-unsafe impl<K: Send, V: Send> Send for TreePtr<K,V> {}
-unsafe impl<K: Sync, V: Send> Sync for TreePtr<K,V> {}
+unsafe impl<K: Send, V: Send> Send for TreePtr<K, V> {}
+unsafe impl<K: Sync, V: Send> Sync for TreePtr<K, V> {}
 
 impl<K, V> TreePtr<K, V> {
     fn value_mut(&mut self) -> &mut V {
@@ -1020,10 +1020,10 @@ impl<K, V> Tree<K, V> {
     }
 
     fn iter(&self) -> Iter<'_, K, V> {
-        Iter( match self {
+        Iter(match self {
             Tree::L(x) => IterE::L(x.iter()),
             Tree::NL(x) => IterE::NL(Box::new(x.iter())),
-        } )
+        })
     }
 
     fn range_mut<T, R>(&mut self, range: &R, left: bool, right: bool) -> IterMut<'_, K, V>
@@ -1044,10 +1044,10 @@ impl<K, V> Tree<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        Iter( match self {
+        Iter(match self {
             Tree::L(x) => IterE::L(x.range(range)),
             Tree::NL(x) => IterE::NL(Box::new(x.range(range, left, right))),
-        } )
+        })
     }
 
     fn walk<F, Q>(&self, start: &Q, action: &mut F) -> bool
@@ -1643,74 +1643,70 @@ impl<K, V> NonLeaf<K, V> {
 } // End impl NonLeaf
 
 /// Mutable iterator returned by [BTreeMap::iter_mut], [BTreeMap::range_mut].
-pub struct IterMut<'a,K,V>(IterMutE<'a,K,V>);
+pub struct IterMut<'a, K, V>(IterMutE<'a, K, V>);
 
-enum IterMutE<'a,K,V> {
-  L(IterLeafMut<'a,K,V>),
-  NL(Box<IterNonLeafMut<'a,K,V>>),
-  EMPTY
+enum IterMutE<'a, K, V> {
+    L(IterLeafMut<'a, K, V>),
+    NL(Box<IterNonLeafMut<'a, K, V>>),
+    Empty,
 }
 
 impl<'a, K, V> IterMut<'a, K, V> {
     fn empty() -> Self {
-        IterMut(IterMutE::EMPTY)
+        IterMut(IterMutE::Empty)
     }
 }
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a mut K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.0
-        {
-          IterMutE::L(x) => x.next(),
-          IterMutE::NL(x) => x.next(),
-          IterMutE::EMPTY => None,
+        match &mut self.0 {
+            IterMutE::L(x) => x.next(),
+            IterMutE::NL(x) => x.next(),
+            IterMutE::Empty => None,
         }
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        match &mut self.0
-        {
-          IterMutE::L(x) => x.next_back(),
-          IterMutE::NL(x) => x.next_back(),
-          IterMutE::EMPTY => None
+        match &mut self.0 {
+            IterMutE::L(x) => x.next_back(),
+            IterMutE::NL(x) => x.next_back(),
+            IterMutE::Empty => None,
         }
     }
 }
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
 /// Iterator returned by [BTreeMap::iter], [BTreeMap::range].
-pub struct Iter<'a,K,V>(IterE<'a,K,V>);
+pub struct Iter<'a, K, V>(IterE<'a, K, V>);
 
-enum IterE<'a,K,V> {
-  L(IterLeaf<'a,K,V>),
-  NL(Box<IterNonLeaf<'a,K,V>>),
-  EMPTY
+enum IterE<'a, K, V> {
+    L(IterLeaf<'a, K, V>),
+    NL(Box<IterNonLeaf<'a, K, V>>),
+    Empty,
 }
 
 impl<'a, K, V> Iter<'a, K, V> {
     fn empty() -> Self {
-        Iter(IterE::EMPTY)
+        Iter(IterE::Empty)
     }
 }
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.0
-        {
-          IterE::L(x) => x.next(),
-          IterE::NL(x) => x.next(),
-          IterE::EMPTY => None,
+        match &mut self.0 {
+            IterE::L(x) => x.next(),
+            IterE::NL(x) => x.next(),
+            IterE::Empty => None,
         }
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        match &mut self.0
-        {
-          IterE::L(x) => x.next_back(),
-          IterE::NL(x) => x.next_back(),
-          IterE::EMPTY => None
+        match &mut self.0 {
+            IterE::L(x) => x.next_back(),
+            IterE::NL(x) => x.next_back(),
+            IterE::Empty => None,
         }
     }
 }
@@ -2003,8 +1999,7 @@ fn test_exp_insert() {
 }
 
 #[test]
-fn test_std_insert()
-{
+fn test_std_insert() {
     for _rep in 0..1000 {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = 10000;
@@ -2026,8 +2021,7 @@ fn test_exp_entry() {
 }
 
 #[test]
-fn test_std_entry()
-{
+fn test_std_entry() {
     for _rep in 0..1000 {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = 10000;
@@ -2038,8 +2032,7 @@ fn test_std_entry()
 }
 
 #[test]
-fn various_tests()
-{    
+fn various_tests() {
     for _rep in 0..1000 {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = 10000;
