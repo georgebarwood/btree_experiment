@@ -1,7 +1,5 @@
-/* Derived from std library BTreeMap tests, but has been hacked around a lot, many tests removed for various reasons.
-   zst tests commented out.
-   Also Entry and some Iters are not Send ( use of dyn in iters is a problem )?
-   These are probably not serious problems in practice.
+/* Derived from std library BTreeMap tests ( https://github.com/rust-lang/rust/blob/master/library/alloc/src/collections/btree/map/tests.rs ), but has been hacked around a lot, many tests removed for various reasons.
+   Some could be restored if I ever find time.
 */
 
 use crate::Entry::*;
@@ -814,7 +812,6 @@ fn test_extend_ref() {
     a.check();
 }
 
-/*
 #[test]
 fn test_zst() {
     let mut m = BTreeMap::new();
@@ -838,12 +835,11 @@ fn test_zst() {
     assert_eq!(m.iter().count(), 1);
     m.check();
 }
-*/
+
 
 // This test's only purpose is to ensure that zero-sized keys with nonsensical orderings
 // do not cause segfaults when used with zero-sized values. All other map behavior is
 // undefined.
-/*
 #[test]
 fn test_bad_zst() {
     #[derive(Clone, Copy, Debug)]
@@ -876,7 +872,6 @@ fn test_bad_zst() {
     }
     m.check();
 }
-*/
 
 #[allow(dead_code)]
 fn assert_covariance() {
@@ -925,6 +920,44 @@ fn assert_send() {
 
     fn into_values<T: Send + Ord>(v: BTreeMap<T, T>) -> impl Send {
         v.into_values()
+    }
+
+    fn iter<T: Send + Sync>(v: &BTreeMap<T, T>) -> impl Send + '_ {
+        v.iter()
+    }
+
+    fn iter_mut<T: Send>(v: &mut BTreeMap<T, T>) -> impl Send + '_ {
+        v.iter_mut()
+    }
+
+    fn keys<T: Send + Sync>(v: &mut BTreeMap<T, T>) -> impl Send + '_ {
+        v.keys()
+    }
+
+    fn values<T: Send + Sync>(v: &BTreeMap<T, T>) -> impl Send + '_ {
+        v.values()
+    }
+
+    fn values_mut<T: Send>(v: &mut BTreeMap<T, T>) -> impl Send + '_ {
+        v.values_mut()
+    }
+
+    fn entry<T: Send + Ord + Default>(v: &mut BTreeMap<T, T>) -> impl Send + '_ {
+        v.entry(Default::default())
+    }
+
+    fn occupied_entry<T: Send + Ord + Default>(v: &mut BTreeMap<T, T>) -> impl Send + '_ {
+        match v.entry(Default::default()) {
+            Occupied(entry) => entry,
+            _ => unreachable!(),
+        }
+    }
+
+    fn vacant_entry<T: Send + Ord + Default>(v: &mut BTreeMap<T, T>) -> impl Send + '_ {
+        match v.entry(Default::default()) {
+            Vacant(entry) => entry,
+            _ => unreachable!(),
+        }
     }
 }
 

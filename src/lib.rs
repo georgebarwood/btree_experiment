@@ -343,12 +343,12 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     /// Get iterator of references to keys.
-    pub fn keys(&mut self) -> Keys<'_, K, V> {
+    pub fn keys(&self) -> Keys<'_, K, V> {
         Keys(self.iter())
     }
 
     /// Get iterator of references to values.
-    pub fn values(&mut self) -> Values<'_, K, V> {
+    pub fn values(&self) -> Values<'_, K, V> {
         Values(self.iter())
     }
 
@@ -1145,7 +1145,7 @@ impl<K, V> Leaf<K, V> {
         let value = x.value.take().unwrap();
         if self.full() {
             let (med, mut right) = self.split();
-            if key > med.0 {
+            if i > self.0.len() {
                 i -= LEAF_SPLIT;
                 right.insert(i, (key, value));
             } else {
