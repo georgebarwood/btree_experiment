@@ -1651,11 +1651,6 @@ enum IterMutE<'a, K, V> {
     Empty,
 }
 
-impl<'a, K, V> IterMut<'a, K, V> {
-    fn empty() -> Self {
-        IterMut(IterMutE::Empty)
-    }
-}
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a mut K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -1686,11 +1681,6 @@ enum IterE<'a, K, V> {
     Empty,
 }
 
-impl<'a, K, V> Iter<'a, K, V> {
-    fn empty() -> Self {
-        Iter(IterE::Empty)
-    }
-}
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -1823,7 +1813,7 @@ impl<'a, K, V> IterNonLeafMut<'a, K, V> {
             self.current = Some(if let Some(tree) = self.c.next() {
                 tree.iter_mut()
             } else {
-                IterMut::empty()
+                IterMut(IterMutE::Empty)
             });
         }
         self.current.as_mut().unwrap()
@@ -1834,7 +1824,7 @@ impl<'a, K, V> IterNonLeafMut<'a, K, V> {
             self.current_back = Some(if let Some(tree) = self.c.next_back() {
                 tree.iter_mut()
             } else {
-                IterMut::empty()
+                IterMut(IterMutE::Empty)
             });
         }
         self.current_back.as_mut().unwrap()
@@ -1879,13 +1869,10 @@ impl<'a, K, V> IterNonLeaf<'a, K, V> {
             self.current = Some(if let Some(tree) = self.c.next() {
                 tree.iter()
             } else {
-                Iter::empty()
+                Iter(IterE::Empty)
             });
         }
-        match &mut self.current {
-            Some(c) => c,
-            None => panic!(),
-        }
+        self.current.as_mut().unwrap()
     }
 
     fn current_back(&mut self) -> &mut Iter<'a, K, V> {
@@ -1893,13 +1880,10 @@ impl<'a, K, V> IterNonLeaf<'a, K, V> {
             self.current_back = Some(if let Some(tree) = self.c.next_back() {
                 tree.iter()
             } else {
-                Iter::empty()
+                Iter(IterE::Empty)
             });
         }
-        match &mut self.current_back {
-            Some(c) => c,
-            None => panic!(),
-        }
+        self.current_back.as_mut().unwrap()
     }
 }
 impl<'a, K, V> Iterator for IterNonLeaf<'a, K, V> {
