@@ -799,7 +799,7 @@ where
                 TreePtr::L(ptr, ix) => unsafe {
                     let x = &mut (*ptr).0;
                     x.insert(ix, (self.key, value));
-                    &mut x[ix].1
+                    &mut x.ixm(ix).1
                 },
                 _ => panic!(),
             };
@@ -1957,38 +1957,61 @@ fn basic_range_test() {
 }
 
 #[test]
-fn test_entry() {
-    for _rep in 0..100 {
-        let n = 100000;
-
-        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::new();
-
-        t.entry(1).or_insert(2);
-
-        assert_eq!(t[&1], 2);
-        *t.entry(1).or_default() += 1;
-        assert_eq!(t[&1], 3);
-
+fn test_exp_insert() {
+    for _rep in 0..1000 {
+        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let n = 10000;
         for i in 0..n {
-            t.entry(i).or_insert(i);
-            // t.insert( i, i );
+            t.insert(i, i);
         }
     }
 }
 
 #[test]
-fn test_btree() {
+fn test_std_insert()
+{
     for _rep in 0..1000 {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = 10000;
-
-        for i in (0..n).rev() {
-            // for i in 0..n {
+        for i in 0..n {
             t.insert(i, i);
         }
-        // println!("t.len()={}", t.len());
+    }
+}
 
-        if false {
+#[test]
+fn test_exp_entry() {
+    for _rep in 0..1000 {
+        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let n = 10000;
+        for i in 0..n {
+            t.entry(i).or_insert(i);
+        }
+    }
+}
+
+#[test]
+fn test_std_entry()
+{
+    for _rep in 0..1000 {
+        let mut t = std::collections::BTreeMap::<usize, usize>::default();
+        let n = 10000;
+        for i in 0..n {
+            t.entry(i).or_insert(i);
+        }
+    }
+}
+
+#[test]
+fn various_tests()
+{    
+    for _rep in 0..1000 {
+        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let n = 10000;
+        for i in 0..n {
+            t.insert(i, i);
+        }
+        if true {
             assert!(t.first_key_value().unwrap().0 == &0);
             assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
