@@ -730,24 +730,24 @@ impl<K, V> TreePtr<K, V> {
     fn value_mut(&mut self) -> &mut V {
         match self {
             TreePtr::None => panic!(),
-            TreePtr::L(ptr, ix) => unsafe { &mut (*(*ptr)).0[*ix].1 },
-            TreePtr::NL(ptr, ix) => unsafe { &mut (*(*ptr)).v[*ix].1 },
+            TreePtr::L(ptr, ix) => unsafe { &mut (*(*ptr)).0.ixm(*ix).1 },
+            TreePtr::NL(ptr, ix) => unsafe { &mut (*(*ptr)).v.ixm(*ix).1 },
         }
     }
 
     fn value_ref(&self) -> &V {
         match self {
             TreePtr::None => panic!(),
-            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0[*ix].1 },
-            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v[*ix].1 },
+            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0.ix(*ix).1 },
+            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v.ix(*ix).1 },
         }
     }
 
     fn key_ref(&self) -> &K {
         match self {
             TreePtr::None => panic!(),
-            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0[*ix].0 },
-            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v[*ix].0 },
+            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0.ix(*ix).0 },
+            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v.ix(*ix).0 },
         }
     }
 }
@@ -881,8 +881,8 @@ where
         match &mut self.key {
             OccupiedEntryKey::Some(pos) => match pos.ptr {
                 TreePtr::None => panic!(),
-                TreePtr::L(ptr, ix) => unsafe { &mut (*ptr).0[ix].1 },
-                TreePtr::NL(ptr, ix) => unsafe { &mut (*ptr).v[ix].1 },
+                TreePtr::L(ptr, ix) => unsafe { &mut (*ptr).0.ixm(ix).1 },
+                TreePtr::NL(ptr, ix) => unsafe { &mut (*ptr).v.ixm(ix).1 },
             },
             OccupiedEntryKey::First => self.map.first_key_value_mut().unwrap().1,
             OccupiedEntryKey::Last => self.map.last_key_value_mut().unwrap().1,
