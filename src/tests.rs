@@ -836,7 +836,6 @@ fn test_zst() {
     m.check();
 }
 
-
 // This test's only purpose is to ensure that zero-sized keys with nonsensical orderings
 // do not cause segfaults when used with zero-sized values. All other map behavior is
 // undefined.

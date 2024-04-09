@@ -391,10 +391,8 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     fn ins_pos(&mut self, pos: &mut Position<K, V>, key: K, value: V) -> &mut (K, V) {
-        if !pos.leaf_has_space {
-            if let Some(s) = self.tree.prepare_insert(&mut pos.ix, 0) {
-                self.tree.new_root(s);
-            }
+        if let Some(s) = self.tree.prepare_insert(&mut pos.ix, 0) {
+            self.tree.new_root(s);
         }
         self.len += 1;
         self.tree.do_insert(&pos.ix, 0, key, value)
@@ -758,7 +756,6 @@ impl<K, V> TreePtr<K, V> {
 /// Represents position of key in Btree.
 struct Position<K, V> {
     key_found: bool,
-    leaf_has_space: bool,
     ix: PosVec,
     ptr: TreePtr<K, V>,
 }
@@ -767,7 +764,6 @@ impl<K, V> Position<K, V> {
     fn new() -> Self {
         Self {
             key_found: false,
-            leaf_has_space: false,
             ix: PosVec::new(),
             ptr: TreePtr::None,
         }
@@ -797,19 +793,15 @@ where
 
     /// Insert value into map returning reference to inserted value.
     pub fn insert(mut self, value: V) -> &'a mut V {
-        if self.pos.leaf_has_space {
-            let result = match self.pos.ptr {
-                TreePtr::L(ptr, ix) => unsafe {
-                    let x = &mut (*ptr).0;
-                    x.insert(ix, (self.key, value));
-                    &mut x.ixm(ix).1
-                },
-                _ => panic!(),
-            };
-            self.map.len += 1;
-            result
-        } else {
-            &mut self.map.ins_pos(&mut self.pos, self.key, value).1
+        match self.pos.ptr {
+            TreePtr::L(ptr, ix) => unsafe {
+                let x = &mut (*ptr).0;
+                x.insert(ix, (self.key, value));
+                let result = &mut x.ixm(ix).1;
+                self.map.len += 1;
+                result
+            },
+            _ => &mut self.map.ins_pos(&mut self.pos, self.key, value).1,
         }
     }
 }
@@ -1200,7 +1192,6 @@ impl<K, V> Leaf<K, V> {
         };
         pos.ix.push(i as u8);
         if !self.full() {
-            pos.leaf_has_space = true;
             pos.ptr = TreePtr::L(self, i);
         }
     }
@@ -2011,6 +2002,34 @@ fn test_std_entry() {
         let n = 10000;
         for i in 0..n {
             t.entry(i).or_insert(i);
+        }
+    }
+}
+
+#[test]
+fn test_std_iter() {
+    let mut m = std::collections::BTreeMap::<usize, usize>::default();
+    let n = 100000;
+    for i in 0..n {
+        m.entry(i).or_insert(i);
+    }
+    for _rep in 0..1000 {
+        for (k, v) in m.iter() {
+            assert!(k == v);
+        }
+    }
+}
+
+#[test]
+fn test_exp_iter() {
+    let mut m = BTreeMap::<usize, usize>::default();
+    let n = 100000;
+    for i in 0..n {
+        m.entry(i).or_insert(i);
+    }
+    for _rep in 0..1000 {
+        for (k, v) in m.iter() {
+            assert!(k == v);
         }
     }
 }

@@ -44,7 +44,9 @@ impl<T> BasicVec<T> {
     ///
     /// old_cap must be the previous capacity set, or 0 if no capacity has yet been set.
     pub unsafe fn set_cap(&mut self, old_cap: usize, new_cap: usize) {
-        if mem::size_of::<T>() == 0 { return; }
+        if mem::size_of::<T>() == 0 {
+            return;
+        }
 
         let new_layout = Layout::array::<T>(new_cap).unwrap();
 
