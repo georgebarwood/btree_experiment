@@ -1567,19 +1567,16 @@ impl<'a, K, V> IterMut<'a, K, V> {
             bck_stk: Vec::new(),
         }
     }
-
     fn push_tree(&mut self, tree: &'a mut Tree<K, V>, both: bool) {
         match tree {
             Tree::L(x) => {
                 self.fwd_leaf = Some(x.iter_mut());
             }
             Tree::NL(x) => {
-                let v = x.v.iter_mut();
-                let mut c = x.c.iter_mut();
+                let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
                 let child = c.next();
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
-
                 self.fwd_stk.push(NonLeafIterMutInfo { v, c });
                 if let Some(child) = child {
                     self.push_tree(child, both);
@@ -1590,7 +1587,6 @@ impl<'a, K, V> IterMut<'a, K, V> {
             }
         }
     }
-
     fn push_range<T, R>(&mut self, tree: &'a mut Tree<K, V>, range: &R, both: bool)
     where
         T: Ord + ?Sized,
@@ -1620,7 +1616,6 @@ impl<'a, K, V> IterMut<'a, K, V> {
             }
         }
     }
-
     fn push_range_back<T, R>(&mut self, tree: &'a mut Tree<K, V>, range: &R)
     where
         T: Ord + ?Sized,
@@ -1645,17 +1640,14 @@ impl<'a, K, V> IterMut<'a, K, V> {
             }
         }
     }
-
     fn push_tree_back(&mut self, tree: &'a mut Tree<K, V>) {
         match tree {
             Tree::L(x) => {
                 self.bck_leaf = Some(x.iter_mut());
             }
             Tree::NL(x) => {
-                let v = x.v.iter_mut();
-                let mut c = x.c.iter_mut();
+                let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
                 let child_back = c.next_back();
-
                 self.bck_stk.push(NonLeafIterMutInfo { v, c });
                 if let Some(child_back) = child_back {
                     self.push_tree_back(child_back);
@@ -1810,7 +1802,6 @@ impl<'a, K, V> Iter<'a, K, V> {
             bck_stk: Vec::new(),
         }
     }
-
     fn push_tree(&mut self, tree: &'a Tree<K, V>, both: bool) {
         match tree {
             Tree::L(x) => {
@@ -1831,7 +1822,6 @@ impl<'a, K, V> Iter<'a, K, V> {
             }
         }
     }
-
     fn push_range<T, R>(&mut self, tree: &'a Tree<K, V>, range: &R, both: bool)
     where
         T: Ord + ?Sized,
@@ -1861,7 +1851,6 @@ impl<'a, K, V> Iter<'a, K, V> {
             }
         }
     }
-
     fn push_range_back<T, R>(&mut self, tree: &'a Tree<K, V>, range: &R)
     where
         T: Ord + ?Sized,
@@ -1886,7 +1875,6 @@ impl<'a, K, V> Iter<'a, K, V> {
             }
         }
     }
-
     fn push_tree_back(&mut self, tree: &'a Tree<K, V>) {
         match tree {
             Tree::L(x) => {
