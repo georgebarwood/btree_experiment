@@ -5,10 +5,12 @@
 //! Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
 
 #![deny(missing_docs)]
-use std::borrow::Borrow;
-use std::cmp::Ordering;
-use std::iter::FusedIterator;
-use std::ops::{Bound, RangeBounds};
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    iter::FusedIterator,
+    ops::{Bound, RangeBounds},
+};
 
 // Vector types.
 mod vecs;
