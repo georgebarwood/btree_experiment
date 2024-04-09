@@ -326,8 +326,8 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let (left, right) = bounded(&range);
-        self.tree.range(&range, left, right)
+        let (_left, _right) = bounded(&range);
+        self.tree.range(&range)
     }
 
     /// Get iterator for range of mutable references to key-value pairs.
@@ -338,8 +338,8 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let (left, right) = bounded(&range);
-        self.tree.range_mut(&range, left, right)
+        let (_left, _right) = bounded(&range);
+        self.tree.range_mut(&range)
     }
 
     /// Get iterator of references to keys.
@@ -1016,7 +1016,7 @@ impl<K, V> Tree<K, V> {
         x
     }
 
-    fn range_mut<T, R>(&mut self, range: &R, _left: bool, _right: bool) -> IterMut<'_, K, V>
+    fn range_mut<T, R>(&mut self, range: &R) -> IterMut<'_, K, V>
     where
         T: Ord + ?Sized,
         K: Borrow<T> + Ord,
@@ -1027,7 +1027,7 @@ impl<K, V> Tree<K, V> {
         x
     }
 
-    fn range<T, R>(&self, range: &R, _left: bool, _right: bool) -> Iter<'_, K, V>
+    fn range<T, R>(&self, range: &R) -> Iter<'_, K, V>
     where
         T: Ord + ?Sized,
         K: Borrow<T> + Ord,
