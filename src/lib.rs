@@ -1281,40 +1281,6 @@ impl<K, V> Leaf<K, V> {
         }
         (x, y)
     }
-
-    fn _range_mut<T, R>(&mut self, range: &R) -> IterLeafMut<'_, K, V>
-    where
-        T: Ord + ?Sized,
-        K: Borrow<T> + Ord,
-        R: RangeBounds<T>,
-    {
-        let mut x = 0;
-        while x < self.0.len() && !range.contains(self.0.ix(x).0.borrow()) {
-            x += 1;
-        }
-        let mut y = self.0.len();
-        while y > x && !range.contains(self.0.ix(y - 1).0.borrow()) {
-            y -= 1;
-        }
-        IterLeafMut(self.0[x..y].iter_mut())
-    }
-
-    fn _range<T, R>(&self, range: &R) -> IterLeaf<'_, K, V>
-    where
-        T: Ord + ?Sized,
-        K: Borrow<T> + Ord,
-        R: RangeBounds<T>,
-    {
-        let mut x = 0;
-        while x < self.0.len() && !range.contains(self.0[x].0.borrow()) {
-            x += 1;
-        }
-        let mut y = self.0.len();
-        while y > x && !range.contains(self.0.ix(y - 1).0.borrow()) {
-            y -= 1;
-        }
-        IterLeaf(self.0[x..y].iter())
-    }
 } // End impl Leaf
 
 struct NonLeaf<K, V> {
