@@ -1817,12 +1817,10 @@ impl<'a, K, V> Iter<'a, K, V> {
                 self.fwd_leaf = Some(x.iter());
             }
             Tree::NL(x) => {
-                let v = x.v.iter();
-                let mut c = x.c.iter();
+                let (v, mut c) = (x.v.iter(), x.c.iter());
                 let child = c.next();
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
-
                 self.fwd_stk.push(NonLeafIterInfo { v, c });
                 if let Some(child) = child {
                     self.push_tree(child, both);
@@ -1895,10 +1893,8 @@ impl<'a, K, V> Iter<'a, K, V> {
                 self.bck_leaf = Some(x.iter());
             }
             Tree::NL(x) => {
-                let v = x.v.iter();
-                let mut c = x.c.iter();
+                let (v, mut c) = (x.v.iter(), x.c.iter());
                 let child_back = c.next_back();
-
                 self.bck_stk.push(NonLeafIterInfo { v, c });
                 if let Some(child_back) = child_back {
                     self.push_tree_back(child_back);
