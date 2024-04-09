@@ -1535,64 +1535,6 @@ impl<K, V> NonLeaf<K, V> {
         }
         (x, y)
     }
-
-    /*
-        fn range_mut<T, R>(&mut self, range: &R, left: bool, right: bool) -> IterNonLeafMut<'_, K, V>
-        where
-            T: Ord + ?Sized,
-            K: Borrow<T> + Ord,
-            R: RangeBounds<T>,
-        {
-            let (x, y) = self.get_xy(range);
-            let (v, mut c) = (self.v[x..y].iter_mut(), self.c[x..y + 1].iter_mut());
-            let current = if left || x == y {
-                let tree = c.next().unwrap();
-                Some(tree.range_mut(range, left, right && x == y))
-            } else {
-                None
-            };
-            let current_back = if right && x != y {
-                let tree = c.next_back().unwrap();
-                Some(tree.range_mut(range, false, true))
-            } else {
-                None
-            };
-            IterNonLeafMut {
-                v,
-                c,
-                current,
-                current_back,
-            }
-        }
-
-        fn _range<T, R>(&self, range: &R, left: bool, right: bool) -> IterNonLeaf<'_, K, V>
-        where
-            T: Ord + ?Sized,
-            K: Borrow<T> + Ord,
-            R: RangeBounds<T>,
-        {
-            let (x, y) = self.get_xy(range);
-            let (v, mut c) = (self.v[x..y].iter(), self.c[x..y + 1].iter());
-            let current = if left || x == y {
-                let tree = c.next().unwrap();
-                Some(tree.range(range, left, right && x == y))
-            } else {
-                None
-            };
-            let current_back = if right && x != y {
-                let tree = c.next_back().unwrap();
-                Some(tree.range(range, false, true))
-            } else {
-                None
-            };
-            IterNonLeaf {
-                v,
-                _c: c,
-                current,
-                current_back,
-            }
-        }
-    */
 } // End impl NonLeaf
 
 struct NonLeafIterMutInfo<'a, K, V> {
