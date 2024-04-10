@@ -16,11 +16,15 @@ use std::{
 
 // Vector types.
 mod vecs;
+use smallvec::SmallVec;
 use vecs::FixedCapVec;
+
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
 type NonLeafChildVec<K, V> = FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
-type PosVec = smallvec::SmallVec<[u8; 8]>;
+type PosVec = SmallVec<[u8; 8]>;
+type StkMutVec<'a, K, V> = SmallVec<[StkMut<'a, K, V>; 8]>;
+type StkVec<'a, K, V> = SmallVec<[Stk<'a, K, V>; 8]>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
@@ -1529,16 +1533,16 @@ enum StealResultMut<'a, K, V> {
 pub struct IterMut<'a, K, V> {
     fwd_leaf: Option<IterLeafMut<'a, K, V>>,
     bck_leaf: Option<IterLeafMut<'a, K, V>>,
-    fwd_stk: Vec<StkMut<'a, K, V>>,
-    bck_stk: Vec<StkMut<'a, K, V>>,
+    fwd_stk: StkMutVec<'a, K, V>,
+    bck_stk: StkMutVec<'a, K, V>,
 }
 impl<'a, K, V> IterMut<'a, K, V> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
             bck_leaf: None,
-            fwd_stk: Vec::new(),
-            bck_stk: Vec::new(),
+            fwd_stk: StkMutVec::new(),
+            bck_stk: StkMutVec::new(),
         }
     }
     fn push_tree(&mut self, tree: &'a mut Tree<K, V>, both: bool) {
@@ -1762,16 +1766,16 @@ enum StealResult<'a, K, V> {
 pub struct Iter<'a, K, V> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
     bck_leaf: Option<IterLeaf<'a, K, V>>,
-    fwd_stk: Vec<Stk<'a, K, V>>,
-    bck_stk: Vec<Stk<'a, K, V>>,
+    fwd_stk: StkVec<'a, K, V>,
+    bck_stk: StkVec<'a, K, V>,
 }
 impl<'a, K, V> Iter<'a, K, V> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
             bck_leaf: None,
-            fwd_stk: Vec::new(),
-            bck_stk: Vec::new(),
+            fwd_stk: StkVec::new(),
+            bck_stk: StkVec::new(),
         }
     }
     fn push_tree(&mut self, tree: &'a Tree<K, V>, both: bool) {
