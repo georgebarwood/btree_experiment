@@ -8,6 +8,8 @@
 use std::{
     borrow::Borrow,
     cmp::Ordering,
+    fmt,
+    fmt::Debug,
     iter::FusedIterator,
     ops::{Bound, RangeBounds},
 };
@@ -75,13 +77,11 @@ pub struct BTreeMap<K, V> {
     len: usize,
     tree: Tree<K, V>,
 }
-
 impl<K, V> Default for BTreeMap<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
-
 impl<K, V> BTreeMap<K, V> {
     #[cfg(test)]
     fn check(&self) {}
@@ -410,13 +410,11 @@ impl<K: Hash, V: Hash> Hash for BTreeMap<K, V> {
         }
     }
 }
-
 impl<K: PartialEq, V: PartialEq> PartialEq for BTreeMap<K, V> {
     fn eq(&self, other: &BTreeMap<K, V>) -> bool {
         self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a == b)
     }
 }
-
 impl<K: Eq, V: Eq> Eq for BTreeMap<K, V> {}
 
 impl<K: PartialOrd, V: PartialOrd> PartialOrd for BTreeMap<K, V> {
@@ -424,13 +422,11 @@ impl<K: PartialOrd, V: PartialOrd> PartialOrd for BTreeMap<K, V> {
         self.iter().partial_cmp(other.iter())
     }
 }
-
 impl<K: Ord, V: Ord> Ord for BTreeMap<K, V> {
     fn cmp(&self, other: &BTreeMap<K, V>) -> Ordering {
         self.iter().cmp(other.iter())
     }
 }
-
 impl<K, V> IntoIterator for BTreeMap<K, V> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
@@ -440,7 +436,6 @@ impl<K, V> IntoIterator for BTreeMap<K, V> {
         IntoIter(self)
     }
 }
-
 impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
     type Item = (&'a K, &'a V);
     type IntoIter = Iter<'a, K, V>;
@@ -448,7 +443,6 @@ impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
         self.iter()
     }
 }
-
 impl<'a, K, V> IntoIterator for &'a mut BTreeMap<K, V> {
     type Item = (&'a mut K, &'a mut V);
     type IntoIter = IterMut<'a, K, V>;
@@ -456,7 +450,6 @@ impl<'a, K, V> IntoIterator for &'a mut BTreeMap<K, V> {
         self.iter_mut()
     }
 }
-
 impl<K, V> Clone for BTreeMap<K, V>
 where
     K: Clone + Ord,
@@ -470,7 +463,6 @@ where
         map
     }
 }
-
 impl<K: Ord, V> FromIterator<(K, V)> for BTreeMap<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> BTreeMap<K, V> {
         let mut map = BTreeMap::new();
@@ -480,7 +472,6 @@ impl<K: Ord, V> FromIterator<(K, V)> for BTreeMap<K, V> {
         map
     }
 }
-
 impl<K, V, const N: usize> From<[(K, V); N]> for BTreeMap<K, V>
 where
     K: Ord,
@@ -493,7 +484,6 @@ where
         map
     }
 }
-
 impl<K, V> Extend<(K, V)> for BTreeMap<K, V>
 where
     K: Ord,
@@ -507,7 +497,6 @@ where
         }
     }
 }
-
 impl<'a, K, V> Extend<(&'a K, &'a V)> for BTreeMap<K, V>
 where
     K: Ord + Copy,
@@ -522,7 +511,6 @@ where
         }
     }
 }
-
 impl<K, Q, V> std::ops::Index<&Q> for BTreeMap<K, V>
 where
     K: Borrow<Q> + Ord,
@@ -537,9 +525,6 @@ where
         self.get(key).expect("no entry found for key")
     }
 }
-
-use std::fmt;
-use std::fmt::Debug;
 impl<K: Debug, V: Debug> Debug for BTreeMap<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map().entries(self.iter()).finish()
@@ -647,7 +632,6 @@ pub enum Entry<'a, K, V> {
     /// Occupied entry - map already contains key.
     Occupied(OccupiedEntry<'a, K, V>),
 }
-
 impl<'a, K, V> Entry<'a, K, V>
 where
     K: Ord,
@@ -725,10 +709,8 @@ enum TreePtr<K, V> {
     L(*mut Leaf<K, V>, usize),
     NL(*mut NonLeaf<K, V>, usize),
 }
-
 unsafe impl<K: Send, V: Send> Send for TreePtr<K, V> {}
 unsafe impl<K: Sync, V: Send> Sync for TreePtr<K, V> {}
-
 impl<K, V> TreePtr<K, V> {
     fn value_mut(&mut self) -> &mut V {
         match self {
@@ -761,7 +743,6 @@ struct Position<K, V> {
     ix: PosVec,
     ptr: TreePtr<K, V>,
 }
-
 impl<K, V> Position<K, V> {
     fn new() -> Self {
         Self {
@@ -778,7 +759,6 @@ pub struct VacantEntry<'a, K, V> {
     key: K,
     pos: Position<K, V>,
 }
-
 impl<'a, K, V> VacantEntry<'a, K, V>
 where
     K: Ord,
@@ -819,7 +799,6 @@ pub struct OccupiedEntry<'a, K, V> {
     map: &'a mut BTreeMap<K, V>,
     key: OccupiedEntryKey<K, V>,
 }
-
 impl<'a, K, V> OccupiedEntry<'a, K, V>
 where
     K: Ord,
@@ -896,13 +875,11 @@ enum Tree<K, V> {
     L(Leaf<K, V>),
     NL(NonLeaf<K, V>),
 }
-
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
         Tree::L(Leaf(FixedCapVec::new()))
     }
 }
-
 impl<K, V> Tree<K, V> {
     fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
     where
@@ -1108,7 +1085,6 @@ impl<K, V> Tree<K, V> {
 } // End impl Tree
 
 struct Leaf<K, V>(LeafVec<K, V>);
-
 impl<K, V> Leaf<K, V> {
     fn full(&self) -> bool {
         self.0.len() >= LEAF_FULL
@@ -1289,7 +1265,6 @@ struct NonLeaf<K, V> {
     v: NonLeafVec<K, V>,
     c: NonLeafChildVec<K, V>,
 }
-
 impl<K, V> NonLeaf<K, V> {
     fn full(&self) -> bool {
         self.v.len() == NON_LEAF_FULL
@@ -1539,7 +1514,7 @@ impl<K, V> NonLeaf<K, V> {
     }
 } // End impl NonLeaf
 
-struct NonLeafIterMutInfo<'a, K, V> {
+struct StkMut<'a, K, V> {
     v: std::slice::IterMut<'a, (K, V)>,
     c: std::slice::IterMut<'a, Tree<K, V>>,
 }
@@ -1554,10 +1529,9 @@ enum StealResultMut<'a, K, V> {
 pub struct IterMut<'a, K, V> {
     fwd_leaf: Option<IterLeafMut<'a, K, V>>,
     bck_leaf: Option<IterLeafMut<'a, K, V>>,
-    fwd_stk: Vec<NonLeafIterMutInfo<'a, K, V>>,
-    bck_stk: Vec<NonLeafIterMutInfo<'a, K, V>>,
+    fwd_stk: Vec<StkMut<'a, K, V>>,
+    bck_stk: Vec<StkMut<'a, K, V>>,
 }
-
 impl<'a, K, V> IterMut<'a, K, V> {
     fn new() -> Self {
         Self {
@@ -1577,7 +1551,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
                 let child = c.next();
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
-                self.fwd_stk.push(NonLeafIterMutInfo { v, c });
+                self.fwd_stk.push(StkMut { v, c });
                 if let Some(child) = child {
                     self.push_tree(child, both);
                 }
@@ -1606,7 +1580,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
 
-                self.fwd_stk.push(NonLeafIterMutInfo { v, c });
+                self.fwd_stk.push(StkMut { v, c });
                 if let Some(child) = child {
                     self.push_range(child, range, both);
                 }
@@ -1633,7 +1607,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
 
                 let child_back = c.next_back();
 
-                self.bck_stk.push(NonLeafIterMutInfo { v, c });
+                self.bck_stk.push(StkMut { v, c });
                 if let Some(child_back) = child_back {
                     self.push_range_back(child_back, range);
                 }
@@ -1648,7 +1622,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
                 let child_back = c.next_back();
-                self.bck_stk.push(NonLeafIterMutInfo { v, c });
+                self.bck_stk.push(StkMut { v, c });
                 if let Some(child_back) = child_back {
                     self.push_tree_back(child_back);
                 }
@@ -1684,7 +1658,6 @@ impl<'a, K, V> IterMut<'a, K, V> {
         StealResultMut::Nothing
     }
 }
-
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a mut K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -1774,7 +1747,7 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
 }
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
-struct NonLeafIterInfo<'a, K, V> {
+struct Stk<'a, K, V> {
     v: std::slice::Iter<'a, (K, V)>,
     c: std::slice::Iter<'a, Tree<K, V>>,
 }
@@ -1789,10 +1762,9 @@ enum StealResult<'a, K, V> {
 pub struct Iter<'a, K, V> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
     bck_leaf: Option<IterLeaf<'a, K, V>>,
-    fwd_stk: Vec<NonLeafIterInfo<'a, K, V>>,
-    bck_stk: Vec<NonLeafIterInfo<'a, K, V>>,
+    fwd_stk: Vec<Stk<'a, K, V>>,
+    bck_stk: Vec<Stk<'a, K, V>>,
 }
-
 impl<'a, K, V> Iter<'a, K, V> {
     fn new() -> Self {
         Self {
@@ -1812,7 +1784,7 @@ impl<'a, K, V> Iter<'a, K, V> {
                 let child = c.next();
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
-                self.fwd_stk.push(NonLeafIterInfo { v, c });
+                self.fwd_stk.push(Stk { v, c });
                 if let Some(child) = child {
                     self.push_tree(child, both);
                 }
@@ -1841,7 +1813,7 @@ impl<'a, K, V> Iter<'a, K, V> {
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
 
-                self.fwd_stk.push(NonLeafIterInfo { v, c });
+                self.fwd_stk.push(Stk { v, c });
                 if let Some(child) = child {
                     self.push_range(child, range, both);
                 }
@@ -1865,10 +1837,8 @@ impl<'a, K, V> Iter<'a, K, V> {
             Tree::NL(t) => {
                 let (x, y) = t.get_xy(range);
                 let (v, mut c) = (t.v[x..y].iter(), t.c[x..y + 1].iter());
-
                 let child_back = c.next_back();
-
-                self.bck_stk.push(NonLeafIterInfo { v, c });
+                self.bck_stk.push(Stk { v, c });
                 if let Some(child_back) = child_back {
                     self.push_range_back(child_back, range);
                 }
@@ -1883,7 +1853,7 @@ impl<'a, K, V> Iter<'a, K, V> {
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.iter(), x.c.iter());
                 let child_back = c.next_back();
-                self.bck_stk.push(NonLeafIterInfo { v, c });
+                self.bck_stk.push(Stk { v, c });
                 if let Some(child_back) = child_back {
                     self.push_tree_back(child_back);
                 }
@@ -1919,7 +1889,6 @@ impl<'a, K, V> Iter<'a, K, V> {
         StealResult::Nothing
     }
 }
-
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -2011,7 +1980,6 @@ impl<'a, K, V> FusedIterator for Iter<'a, K, V> {}
 
 /// Consuming iterator, result of converting BTreeMap into an iterator.
 pub struct IntoIter<K, V>(BTreeMap<K, V>);
-
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
 
@@ -2032,7 +2000,6 @@ impl<K, V> FusedIterator for IntoIter<K, V> {}
 
 /// Consuming iterator returned by [BTreeMap::into_keys].
 pub struct IntoKeys<K, V>(BTreeMap<K, V>);
-
 impl<K, V> Iterator for IntoKeys<K, V> {
     type Item = K;
 
@@ -2053,7 +2020,6 @@ impl<K, V> FusedIterator for IntoKeys<K, V> {}
 
 /// Consuming iterator returned by [BTreeMap::into_values].
 pub struct IntoValues<K, V>(BTreeMap<K, V>);
-
 impl<K, V> Iterator for IntoValues<K, V> {
     type Item = V;
 
@@ -2075,7 +2041,6 @@ impl<K, V> FusedIterator for IntoValues<K, V> {}
 // Leaf iterators.
 
 struct IterLeafMut<'a, K, V>(std::slice::IterMut<'a, (K, V)>);
-
 impl<'a, K, V> Iterator for IterLeafMut<'a, K, V> {
     type Item = (&'a mut K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -2091,7 +2056,6 @@ impl<'a, K, V> DoubleEndedIterator for IterLeafMut<'a, K, V> {
 }
 
 struct IterLeaf<'a, K, V>(std::slice::Iter<'a, (K, V)>);
-
 impl<'a, K, V> Iterator for IterLeaf<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
