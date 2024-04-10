@@ -151,7 +151,6 @@ pub(crate) struct FixedCapVec<const CAP: usize, T> {
 }
 
 impl<const CAP: usize, T> FixedCapVec<CAP, T> {
-    ///
     pub fn new() -> Self {
         let mut v = BasicVec::new();
         unsafe {
@@ -160,19 +159,16 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         Self { len: 0, v }
     }
 
-    ///
     #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
-    ///
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    ///
     #[inline]
     pub fn push(&mut self, value: T) {
         safe_assert!(self.len < CAP);
@@ -182,7 +178,6 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         self.len += 1;
     }
 
-    ///
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
@@ -193,7 +188,6 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         }
     }
 
-    ///
     pub fn insert(&mut self, at: usize, value: T) {
         safe_assert!(at <= self.len && self.len < CAP);
         unsafe {
@@ -205,7 +199,6 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         }
     }
 
-    ///
     pub fn remove(&mut self, at: usize) -> T {
         safe_assert!(at < self.len);
         unsafe {
@@ -216,7 +209,6 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         }
     }
 
-    ///
     pub fn split_off(&mut self, at: usize) -> Self {
         safe_assert!(at < self.len);
         let len = self.len - at;
@@ -229,7 +221,6 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         result
     }
 
-    ///
     pub fn retain_mut<F>(&mut self, mut f: F)
     where
         F: FnMut(&mut T) -> bool,
