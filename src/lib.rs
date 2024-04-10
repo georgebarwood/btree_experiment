@@ -1627,11 +1627,8 @@ impl<'a, K, V> IterMut<'a, K, V> {
     fn steal_bck(&mut self) -> StealResultMut<'a, K, V> {
         for s in self.bck_stk.iter_mut() {
             if s.v.len() > s.c.len() {
-                if let Some(kv) = s.v.next() {
-                    return StealResultMut::Value((&mut kv.0, &mut kv.1));
-                } else {
-                    panic!()
-                }
+                let kv = s.v.next().unwrap();
+                return StealResultMut::Value((&mut kv.0, &mut kv.1));
             } else if let Some(child) = s.c.next() {
                 return StealResultMut::Child(child);
             }
@@ -1641,11 +1638,8 @@ impl<'a, K, V> IterMut<'a, K, V> {
     fn steal_fwd(&mut self) -> StealResultMut<'a, K, V> {
         for s in self.fwd_stk.iter_mut() {
             if s.v.len() > s.c.len() {
-                if let Some(kv) = s.v.next_back() {
-                    return StealResultMut::Value((&mut kv.0, &mut kv.1));
-                } else {
-                    panic!()
-                }
+                let kv = s.v.next_back().unwrap();
+                return StealResultMut::Value((&mut kv.0, &mut kv.1));
             } else if let Some(child) = s.c.next_back() {
                 return StealResultMut::Child(child);
             }
@@ -1858,11 +1852,8 @@ impl<'a, K, V> Iter<'a, K, V> {
     fn steal_bck(&mut self) -> StealResult<'a, K, V> {
         for s in self.bck_stk.iter_mut() {
             if s.v.len() > s.c.len() {
-                if let Some(kv) = s.v.next() {
-                    return StealResult::Value((&kv.0, &kv.1));
-                } else {
-                    panic!()
-                }
+                let kv = s.v.next().unwrap();
+                return StealResult::Value((&kv.0, &kv.1));
             } else if let Some(child) = s.c.next() {
                 return StealResult::Child(child);
             }
@@ -1872,11 +1863,8 @@ impl<'a, K, V> Iter<'a, K, V> {
     fn steal_fwd(&mut self) -> StealResult<'a, K, V> {
         for s in self.fwd_stk.iter_mut() {
             if s.v.len() > s.c.len() {
-                if let Some(kv) = s.v.next_back() {
-                    return StealResult::Value((&kv.0, &kv.1));
-                } else {
-                    panic!()
-                }
+                let kv = s.v.next_back().unwrap();
+                return StealResult::Value((&kv.0, &kv.1));
             } else if let Some(child) = s.c.next_back() {
                 return StealResult::Child(child);
             }
