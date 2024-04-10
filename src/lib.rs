@@ -114,12 +114,17 @@ impl<K, V> BTreeMap<K, V> {
         self.tree.find_position(&key, &mut pos);
         if pos.key_found {
             let key = OccupiedEntryKey::Some(pos);
-            Entry::Occupied(OccupiedEntry { map: self, key })
+            Entry::Occupied(OccupiedEntry {
+                map: self,
+                key,
+                _pd: PhantomData,
+            })
         } else {
             Entry::Vacant(VacantEntry {
                 map: self,
                 key,
                 pos,
+                _pd: PhantomData,
             })
         }
     }
@@ -132,6 +137,7 @@ impl<K, V> BTreeMap<K, V> {
             Some(OccupiedEntry {
                 map: self,
                 key: OccupiedEntryKey::First,
+                _pd: PhantomData,
             })
         }
     }
@@ -144,6 +150,7 @@ impl<K, V> BTreeMap<K, V> {
             Some(OccupiedEntry {
                 map: self,
                 key: OccupiedEntryKey::Last,
+                _pd: PhantomData,
             })
         }
     }
@@ -748,12 +755,18 @@ impl<K, V> Position<K, V> {
     }
 }
 
+use std::marker::PhantomData;
+
 /// Vacant [Entry].
 pub struct VacantEntry<'a, K, V> {
-    map: &'a mut BTreeMap<K, V>,
+    map: *mut BTreeMap<K, V>,
     key: K,
     pos: Position<K, V>,
+    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
 }
+unsafe impl<'a, K: Send, V: Send> Send for VacantEntry<'a, K, V> {}
+unsafe impl<'a, K: Sync, V: Send> Sync for VacantEntry<'a, K, V> {}
+
 impl<'a, K, V> VacantEntry<'a, K, V>
 where
     K: Ord,
@@ -775,10 +788,10 @@ where
                 let x = &mut (*ptr).0;
                 x.insert(ix, (self.key, value));
                 let result = &mut x.ixm(ix).1;
-                self.map.len += 1;
+                (*self.map).len += 1;
                 result
             },
-            _ => &mut self.map.ins_pos(&mut self.pos, self.key, value).1,
+            _ => unsafe { &mut (*self.map).ins_pos(&mut self.pos, self.key, value).1 },
         }
     }
 }
@@ -791,36 +804,44 @@ enum OccupiedEntryKey<K, V> {
 
 /// Occupied [Entry].
 pub struct OccupiedEntry<'a, K, V> {
-    map: &'a mut BTreeMap<K, V>,
+    map: *mut BTreeMap<K, V>,
     key: OccupiedEntryKey<K, V>,
+    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
 }
+unsafe impl<'a, K: Send, V: Send> Send for OccupiedEntry<'a, K, V> {}
+unsafe impl<'a, K: Sync, V: Send> Sync for OccupiedEntry<'a, K, V> {}
+
 impl<'a, K, V> OccupiedEntry<'a, K, V>
 where
     K: Ord,
 {
     /// Get reference to entry key.
     pub fn key(&self) -> &K {
-        match &self.key {
-            OccupiedEntryKey::Some(pos) => pos.ptr.key_ref(),
-            OccupiedEntryKey::First => self.map.first_key_value().unwrap().0,
-            OccupiedEntryKey::Last => self.map.last_key_value().unwrap().0,
+        unsafe {
+            match &self.key {
+                OccupiedEntryKey::Some(pos) => pos.ptr.key_ref(),
+                OccupiedEntryKey::First => (*self.map).first_key_value().unwrap().0,
+                OccupiedEntryKey::Last => (*self.map).last_key_value().unwrap().0,
+            }
         }
     }
 
     /// Remove (key,value) from map, returning key and value.
     pub fn remove_entry(self) -> (K, V) {
-        match &self.key {
-            OccupiedEntryKey::Some(pos) => {
-                let result = match pos.ptr {
-                    TreePtr::L(ptr, ix) => unsafe { (*ptr).0.remove(ix) },
-                    TreePtr::NL(ptr, ix) => unsafe { (*ptr).remove_at(ix) },
-                    TreePtr::None => panic!(),
-                };
-                self.map.len -= 1;
-                result
+        unsafe {
+            match &self.key {
+                OccupiedEntryKey::Some(pos) => {
+                    let result = match pos.ptr {
+                        TreePtr::L(ptr, ix) => (*ptr).0.remove(ix),
+                        TreePtr::NL(ptr, ix) => (*ptr).remove_at(ix),
+                        TreePtr::None => panic!(),
+                    };
+                    (*self.map).len -= 1;
+                    result
+                }
+                OccupiedEntryKey::First => (*self.map).pop_first().unwrap(),
+                OccupiedEntryKey::Last => (*self.map).pop_last().unwrap(),
             }
-            OccupiedEntryKey::First => self.map.pop_first().unwrap(),
-            OccupiedEntryKey::Last => self.map.pop_last().unwrap(),
         }
     }
 
@@ -831,32 +852,38 @@ where
 
     /// Get reference to the value.
     pub fn get(&self) -> &V {
-        match &self.key {
-            OccupiedEntryKey::Some(pos) => pos.ptr.value_ref(),
-            OccupiedEntryKey::First => self.map.first_key_value().unwrap().1,
-            OccupiedEntryKey::Last => self.map.last_key_value().unwrap().1,
+        unsafe {
+            match &self.key {
+                OccupiedEntryKey::Some(pos) => pos.ptr.value_ref(),
+                OccupiedEntryKey::First => (*self.map).first_key_value().unwrap().1,
+                OccupiedEntryKey::Last => (*self.map).last_key_value().unwrap().1,
+            }
         }
     }
 
     /// Get mutable reference to the value.
     pub fn get_mut(&mut self) -> &mut V {
-        match &mut self.key {
-            OccupiedEntryKey::Some(pos) => pos.ptr.value_mut(),
-            OccupiedEntryKey::First => self.map.first_key_value_mut().unwrap().1,
-            OccupiedEntryKey::Last => self.map.last_key_value_mut().unwrap().1,
+        unsafe {
+            match &mut self.key {
+                OccupiedEntryKey::Some(pos) => pos.ptr.value_mut(),
+                OccupiedEntryKey::First => (*self.map).first_key_value_mut().unwrap().1,
+                OccupiedEntryKey::Last => (*self.map).last_key_value_mut().unwrap().1,
+            }
         }
     }
 
     /// Get mutable reference to the value, consuming the entry.
     pub fn into_mut(mut self) -> &'a mut V {
-        match &mut self.key {
-            OccupiedEntryKey::Some(pos) => match pos.ptr {
-                TreePtr::None => panic!(),
-                TreePtr::L(ptr, ix) => unsafe { &mut (*ptr).0.ixm(ix).1 },
-                TreePtr::NL(ptr, ix) => unsafe { &mut (*ptr).v.ixm(ix).1 },
-            },
-            OccupiedEntryKey::First => self.map.first_key_value_mut().unwrap().1,
-            OccupiedEntryKey::Last => self.map.last_key_value_mut().unwrap().1,
+        unsafe {
+            match &mut self.key {
+                OccupiedEntryKey::Some(pos) => match pos.ptr {
+                    TreePtr::None => panic!(),
+                    TreePtr::L(ptr, ix) => &mut (*ptr).0.ixm(ix).1,
+                    TreePtr::NL(ptr, ix) => &mut (*ptr).v.ixm(ix).1,
+                },
+                OccupiedEntryKey::First => (*self.map).first_key_value_mut().unwrap().1,
+                OccupiedEntryKey::Last => (*self.map).last_key_value_mut().unwrap().1,
+            }
         }
     }
 
@@ -2099,6 +2126,11 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
     }
 }
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
+
+#[test]
+fn test_is_this_ub() {
+    BTreeMap::new().entry(0).or_insert('a');
+}
 
 #[test]
 fn basic_range_test() {
