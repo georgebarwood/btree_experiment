@@ -33,35 +33,27 @@ const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
 const NON_LEAF_SPLIT: usize = 30;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
 
-fn bounded<T, R>(range: &R) -> (bool, bool)
+fn check_range<T, R>(range: &R)
 where
     T: Ord + ?Sized,
     R: RangeBounds<T>,
 {
     use Bound::*;
-    let (left, right) = match (range.start_bound(), range.end_bound()) {
-        (Unbounded, Unbounded) => (false, false),
-        (Unbounded, Included(_)) => (false, true),
-        (Unbounded, Excluded(_)) => (false, true),
-        (Included(_), Unbounded) => (true, false),
+    match (range.start_bound(), range.end_bound()) {
         (Included(s), Included(e)) => {
             if e < s {
                 panic!("range start is greater than range end in BTreeMap")
             }
-            (true, true)
         }
         (Included(s), Excluded(e)) => {
             if e < s {
                 panic!("range start is greater than range end in BTreeMap")
             }
-            (true, true)
         }
-        (Excluded(_), Unbounded) => (true, false),
         (Excluded(s), Included(e)) => {
             if e < s {
                 panic!("range start is greater than range end in BTreeMap")
             }
-            (true, true)
         }
         (Excluded(s), Excluded(e)) => {
             if e == s {
@@ -70,10 +62,9 @@ where
             if e < s {
                 panic!("range start is greater than range end in BTreeMap")
             }
-            (true, true)
         }
-    };
-    (left, right)
+        _ => {}
+    }
 }
 
 /// BTreeMap similar to [std::collections::BTreeMap].
@@ -332,7 +323,7 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let (_left, _right) = bounded(&range);
+        check_range(&range);
         self.tree.range(&range)
     }
 
@@ -344,7 +335,7 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let (_left, _right) = bounded(&range);
+        check_range(&range);
         self.tree.range_mut(&range)
     }
 
