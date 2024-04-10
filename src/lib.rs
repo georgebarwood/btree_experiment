@@ -2130,6 +2130,15 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 #[test]
 fn test_is_this_ub() {
     BTreeMap::new().entry(0).or_insert('a');
+
+    let mut m = BTreeMap::new();
+    m.insert(0,'a');
+    *m.entry(0).or_insert('a') = 'b';
+    match m.entry(0)
+    {
+       Entry::Occupied(e) => e.remove(),
+       _ => panic!()
+    };
 }
 
 #[test]
