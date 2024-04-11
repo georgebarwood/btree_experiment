@@ -2154,7 +2154,7 @@ fn basic_range_test() {
 }
 
 #[test]
-fn test_exp_insert() {
+fn test_exp_insert_fwd() {
     for _rep in 0..1000 {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = 10000;
@@ -2165,11 +2165,33 @@ fn test_exp_insert() {
 }
 
 #[test]
-fn test_std_insert() {
+fn test_std_insert_fwd() {
     for _rep in 0..1000 {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = 10000;
         for i in 0..n {
+            t.insert(i, i);
+        }
+    }
+}
+
+#[test]
+fn test_exp_insert_rev() {
+    for _rep in 0..1000 {
+        let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let n = 10000;
+        for i in (0..n).rev() {
+            t.insert(i, i);
+        }
+    }
+}
+
+#[test]
+fn test_std_insert_rev() {
+    for _rep in 0..1000 {
+        let mut t = std::collections::BTreeMap::<usize, usize>::default();
+        let n = 10000;
+        for i in (0..n).rev() {
             t.insert(i, i);
         }
     }
