@@ -355,14 +355,14 @@ impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
 
 use std::mem::MaybeUninit;
 
-/// ToDo
+/// Vec of fixed capacity N, typically allocated on the stack.
 pub struct StackVec<T, const N: usize> {
     len: usize,
     v: MaybeUninit<[T; N]>,
 }
 
 impl<T, const N: usize> StackVec<T, N> {
-    /// ToDo
+    /// Construct new empty StackVec.
     pub fn new() -> Self {
         Self {
             len: 0,
@@ -370,7 +370,7 @@ impl<T, const N: usize> StackVec<T, N> {
         }
     }
 
-    /// ToDo
+    /// Push value. Will panic if vec is full to capacity.
     pub fn push(&mut self, value: T) {
         assert!(self.len < N);
         let p = self.v.as_mut_ptr();
@@ -381,7 +381,7 @@ impl<T, const N: usize> StackVec<T, N> {
         self.len += 1;
     }
 
-    /// ToDo
+    /// Pop value, returns None if stack is empty.
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
@@ -394,6 +394,21 @@ impl<T, const N: usize> StackVec<T, N> {
             }
         }
     }
+
+    /// ToDo
+    pub fn insert(&mut self, at: usize, value: T)
+    {
+        assert!(at <= self.len && self.len < N);
+        let p = self.v.as_mut_ptr();
+        unsafe {
+            let p: *mut T = &mut (*p)[at];
+            let n = self.len - at;
+            let to = p.add(1);
+            ptr::copy(p, to, n);
+            p.write(value);
+        }
+        self.len += 1;
+    }        
 }
 
 impl<T, const N: usize> Drop for StackVec<T, N> {
@@ -434,9 +449,10 @@ impl<T, const N: usize> Default for StackVec<T, N> {
 #[test]
 fn test_stackvec() {
     let mut sv = StackVec::<i32, 10>::new();
-    sv.push(99);
     sv.push(98);
-    println!("sv[0..2]={:?}", &sv[0..2]);
+    sv.push(100);
+    sv.insert(1,99);
+    println!("sv[0..3]={:?}", &sv[0..3]);
 }
 
 #[test]
