@@ -10,7 +10,6 @@ include = ["/src"]
 
 [dependencies]
 serde = { version = "1.0.197", optional=true }
-smallvec = { version = "1.13.2", features = ["union"] }
 
 [features]
 serde = ["dep:serde"]
