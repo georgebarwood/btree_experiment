@@ -325,14 +325,13 @@ impl<const CAP: usize, T> IntoIterator for FixedCapVec<CAP, T> {
     }
 }
 
-pub struct FixedCapIter<const CAP: usize, T> {
+pub(crate) struct FixedCapIter<const CAP: usize, T> {
     start: usize,
     v: FixedCapVec<CAP, T>,
 }
 
 impl<const CAP: usize, T> FixedCapIter<CAP, T> {
-    pub fn len(&self) -> usize
-    {
+    pub fn len(&self) -> usize {
         self.v.len - self.start
     }
 }
