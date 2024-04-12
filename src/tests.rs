@@ -879,14 +879,12 @@ fn assert_covariance() {
         v
     }
 
-    /*
-        fn into_iter_key<'new>(v: IntoIter<&'static str, ()>) -> IntoIter<&'new str, ()> {
-            v
-        }
-        fn into_iter_val<'new>(v: IntoIter<(), &'static str>) -> IntoIter<(), &'new str> {
-            v
-        }
-    */    
+    fn into_iter_key<'new>(v: IntoIter<&'static str, ()>) -> IntoIter<&'new str, ()> {
+        v
+    }
+    fn into_iter_val<'new>(v: IntoIter<(), &'static str>) -> IntoIter<(), &'new str> {
+        v
+    }
 
     fn into_keys_key<'new>(v: IntoKeys<&'static str, ()>) -> IntoKeys<&'new str, ()> {
         v

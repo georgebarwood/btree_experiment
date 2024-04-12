@@ -11,21 +11,31 @@ use std::{
     fmt,
     fmt::Debug,
     iter::FusedIterator,
+    marker::PhantomData,
     ops::{Bound, RangeBounds},
 };
 
 // Vector types.
 mod vecs;
 use smallvec::SmallVec;
+pub use vecs::StackVec;
 use vecs::*;
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
 type NonLeafChildVec<K, V> = FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
+
 type PosVec = SmallVec<[u8; 8]>;
+/*
 type StkMutVec<'a, K, V> = SmallVec<[StkMut<'a, K, V>; 8]>;
 type StkConVec<K, V> = SmallVec<[StkCon<K, V>; 8]>;
 type StkVec<'a, K, V> = SmallVec<[Stk<'a, K, V>; 8]>;
+*/
+
+// type PosVec = StackVec<u8>;
+type StkMutVec<'a, K, V> = StackVec<StkMut<'a, K, V>>;
+type StkConVec<K, V> = StackVec<StkCon<K, V>>;
+type StkVec<'a, K, V> = StackVec<Stk<'a, K, V>>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
@@ -427,7 +437,6 @@ impl<K: PartialOrd, V: PartialOrd> PartialOrd for BTreeMap<K, V> {
 }
 impl<K: Ord, V: Ord> Ord for BTreeMap<K, V> {
     fn cmp(&self, other: &BTreeMap<K, V>) -> Ordering {
-
         self.iter().cmp(other.iter())
     }
 }
@@ -561,9 +570,6 @@ where
         map.end()
     }
 }
-
-#[cfg(feature = "serde")]
-use std::marker::PhantomData;
 
 #[cfg(feature = "serde")]
 struct BTreeMapVisitor<K, V> {
@@ -758,8 +764,6 @@ impl<K, V> Position<K, V> {
         }
     }
 }
-
-use std::marker::PhantomData;
 
 /// Vacant [Entry].
 pub struct VacantEntry<'a, K, V> {
@@ -1770,8 +1774,8 @@ impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 //////////////////////////
 
 struct StkCon<K, V> {
-    v: FixedCapIterCon<NON_LEAF_FULL, (K, V)>,
-    c: FixedCapIterCon<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
+    v: FixedCapIntoIter<NON_LEAF_FULL, (K, V)>,
+    c: FixedCapIntoIter<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
 }
 
 enum StealResultCon<K, V> {
@@ -1782,8 +1786,8 @@ enum StealResultCon<K, V> {
 
 /// ToDo!
 pub struct IntoIter<K, V> {
-    fwd_leaf: Option<FixedCapIterCon<LEAF_FULL, (K, V)>>,
-    bck_leaf: Option<FixedCapIterCon<LEAF_FULL, (K, V)>>,
+    fwd_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
+    bck_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
     fwd_stk: StkConVec<K, V>,
     bck_stk: StkConVec<K, V>,
 }
@@ -1799,10 +1803,10 @@ impl<K, V> IntoIter<K, V> {
     fn push_tree(&mut self, tree: Tree<K, V>, both: bool) {
         match tree {
             Tree::L(x) => {
-                self.fwd_leaf = Some(x.0.iter_con());
+                self.fwd_leaf = Some(x.0.into_iter());
             }
             Tree::NL(x) => {
-                let (v, mut c) = (x.v.iter_con(), x.c.iter_con());
+                let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
                 let child = c.next();
                 let child_back = if both { c.next_back() } else { None };
                 let both = both && child_back.is_none();
@@ -1826,11 +1830,11 @@ impl<K, V> IntoIter<K, V> {
             match tree {
                 Tree::L(leaf) => {
                     let (x, y) = leaf.get_xy(range);
-                    self.fwd_leaf = Some(IterLeafMut(leaf.0[x..y].iter_con()));
+                    self.fwd_leaf = Some(IterLeafMut(leaf.0[x..y].into_iter()));
                 }
                 Tree::NL(t) => {
                     let (x, y) = t.get_xy(range);
-                    let (v, mut c) = (t.v[x..y].iter_con(), t.c[x..y + 1].iter_con());
+                    let (v, mut c) = (t.v[x..y].into_iter(), t.c[x..y + 1].into_iter());
 
                     let child = c.next();
                     let child_back = if both { c.next_back() } else { None };
@@ -1855,11 +1859,11 @@ impl<K, V> IntoIter<K, V> {
             match tree {
                 Tree::L(leaf) => {
                     let (x, y) = leaf.get_xy(range);
-                    self.bck_leaf = Some(IterLeafMut(leaf.0[x..y].iter_con()));
+                    self.bck_leaf = Some(IterLeafMut(leaf.0[x..y].into_iter()));
                 }
                 Tree::NL(t) => {
                     let (x, y) = t.get_xy(range);
-                    let (v, mut c) = (t.v[x..y].iter_con(), t.c[x..y + 1].iter_con());
+                    let (v, mut c) = (t.v[x..y].into_iter(), t.c[x..y + 1].into_iter());
 
                     let child_back = c.next_back();
 
@@ -1875,10 +1879,10 @@ impl<K, V> IntoIter<K, V> {
     fn push_tree_back(&mut self, tree: Tree<K, V>) {
         match tree {
             Tree::L(x) => {
-                self.bck_leaf = Some(x.0.iter_con());
+                self.bck_leaf = Some(x.0.into_iter());
             }
             Tree::NL(x) => {
-                let (v, mut c) = (x.v.iter_con(), x.c.iter_con());
+                let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
                 let child_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
                 if let Some(child_back) = child_back {
@@ -2618,13 +2622,3 @@ fn various_tests() {
 
 #[cfg(test)]
 mod tests;
-
-#[allow(dead_code)]
-fn assert_covariance() {
-        fn into_iter_key<'new>(v: IntoIter<&'static str, ()>) -> IntoIter<&'new str, ()> {
-            v
-        }
-        fn into_iter_val<'new>(v: IntoIter<(), &'static str>) -> IntoIter<(), &'new str> {
-            v
-        }
-}

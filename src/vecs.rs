@@ -276,10 +276,6 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         }
         Err(i)
     }
-
-    pub fn iter_con(self) -> FixedCapIterCon<CAP, T> {
-        FixedCapIterCon { v: self }
-    }
 }
 
 impl<const CAP: usize, T> Deref for FixedCapVec<CAP, T> {
@@ -320,17 +316,27 @@ impl<const CAP: usize, T> Drop for FixedCapVec<CAP, T> {
     }
 }
 
-pub struct FixedCapIterCon<const CAP: usize, T> {
+impl<const CAP: usize, T> IntoIterator for FixedCapVec<CAP, T> {
+    type Item = T;
+    type IntoIter = FixedCapIntoIter<CAP, T>;
+
+    /// Convert BTreeMap to Iterator.
+    fn into_iter(self) -> Self::IntoIter {
+        FixedCapIntoIter { v: self }
+    }
+}
+
+pub struct FixedCapIntoIter<const CAP: usize, T> {
     v: FixedCapVec<CAP, T>,
 }
 
-impl<const CAP: usize, T> FixedCapIterCon<CAP, T> {
+impl<const CAP: usize, T> FixedCapIntoIter<CAP, T> {
     pub fn len(&self) -> usize {
         self.v.len()
     }
 }
 
-impl<const CAP: usize, T> Iterator for FixedCapIterCon<CAP, T> {
+impl<const CAP: usize, T> Iterator for FixedCapIntoIter<CAP, T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         if !self.v.is_empty() {
@@ -341,10 +347,96 @@ impl<const CAP: usize, T> Iterator for FixedCapIterCon<CAP, T> {
     }
 }
 
-impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIterCon<CAP, T> {
+impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.v.pop()
     }
+}
+
+use std::mem::MaybeUninit;
+
+/// ToDo
+pub struct StackVec<T> {
+    len: usize,
+    v: MaybeUninit<[T; 10]>,
+}
+
+impl<T> StackVec<T> {
+    /// ToDo
+    pub fn new() -> Self {
+        Self {
+            len: 0,
+            v: MaybeUninit::uninit(),
+        }
+    }
+
+    /// ToDo
+    pub fn push(&mut self, value: T) {
+        assert!(self.len < 10);
+        let p = self.v.as_mut_ptr();
+        unsafe {
+            let p: *mut T = &mut (*p)[self.len];
+            p.write(value);
+        }
+        self.len += 1;
+    }
+
+    /// ToDo
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            let p = self.v.as_ptr();
+            unsafe {
+                let p: *const T = &(*p)[self.len];
+                Some(p.read())
+            }
+        }
+    }
+}
+
+impl<T> Drop for StackVec<T> {
+    fn drop(&mut self) {
+        let mut len = self.len;
+        while len > 0 {
+            len -= 1;
+            self.pop();
+        }
+    }
+}
+
+impl<T> Deref for StackVec<T> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &[T] {
+        let len = self.len;
+        let p = self.v.as_ptr();
+        unsafe { &(*p)[0..len] }
+    }
+}
+
+impl<T> DerefMut for StackVec<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [T] {
+        let len = self.len;
+        let p = self.v.as_mut_ptr();
+        unsafe { &mut (*p)[0..len] }
+    }
+}
+
+impl<T> Default for StackVec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[test]
+fn test_stackvec() {
+    let mut sv = StackVec::new();
+    sv.push(99);
+    sv.push(98);
+    println!("sv[0..2]={:?}", &sv[0..2]);
 }
 
 #[test]
