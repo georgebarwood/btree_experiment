@@ -1,6 +1,6 @@
 [package]
 name = "btree_experiment"
-version = "0.1.67"
+version = "0.1.69"
 edition = "2021"
 authors = ["George Barwood"]
 description = "Crate implements a BTreeMap similar to std::collections::BTreeMap."
@@ -9,6 +9,7 @@ repository = "https://github.com/georgebarwood/btree_experiment"
 include = ["/src"]
 
 [dependencies]
+arrayvec = "0.7.4"
 serde = { version = "1.0.197", optional=true }
 
 [features]
