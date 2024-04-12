@@ -322,34 +322,50 @@ impl<const CAP: usize, T> IntoIterator for FixedCapVec<CAP, T> {
 
     /// Convert BTreeMap to Iterator.
     fn into_iter(self) -> Self::IntoIter {
-        FixedCapIntoIter { v: self }
+        FixedCapIntoIter { start: 0, v: self }
     }
 }
 
 pub struct FixedCapIntoIter<const CAP: usize, T> {
+    start: usize,
     v: FixedCapVec<CAP, T>,
 }
 
 impl<const CAP: usize, T> FixedCapIntoIter<CAP, T> {
-    pub fn len(&self) -> usize {
-        self.v.len()
+    pub fn len(&self) -> usize
+    {
+        self.v.len - self.start
     }
 }
 
 impl<const CAP: usize, T> Iterator for FixedCapIntoIter<CAP, T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.v.is_empty() {
-            Some(self.v.remove(0)) // ToDo : have a count of removed elements.
-        } else {
+        if self.start == self.v.len {
             None
+        } else {
+            let ix = self.start;
+            self.start += 1;
+            Some(unsafe { self.v.v.get(ix) })
         }
     }
 }
-
 impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.v.pop()
+        if self.start == self.v.len {
+            None
+        } else {
+            self.v.len -= 1;
+            Some(unsafe { self.v.v.get(self.v.len) })
+        }
+    }
+}
+impl<const CAP: usize, T> Drop for FixedCapIntoIter<CAP, T> {
+    fn drop(&mut self) {
+        while self.len() > 0 {
+            self.next();
+        }
+        self.v.len = 0;
     }
 }
 

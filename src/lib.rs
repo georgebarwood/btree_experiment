@@ -17,8 +17,8 @@ use std::{
 
 // Vector types.
 mod vecs;
-use vecs::{FixedCapVec,FixedCapIntoIter};
 use arrayvec::ArrayVec;
+use vecs::{FixedCapIntoIter, FixedCapVec};
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
@@ -2288,7 +2288,7 @@ impl<'a, K, V> DoubleEndedIterator for ValuesMut<'a, K, V> {
 }
 impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> {}
 
-/// Mutable iterator returned by [BTreeMap::values].
+/// Iterator returned by [BTreeMap::values].
 pub struct Values<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Values<'a, K, V> {
     type Item = &'a V;
