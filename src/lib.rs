@@ -18,8 +18,9 @@ use std::{
 // Vector types.
 mod vecs;
 // use smallvec::SmallVec;
-pub use vecs::StackVec;
-use vecs::*;
+// pub use vecs::StackVec;
+use vecs::{FixedCapVec,FixedCapIntoIter};
+use arrayvec::ArrayVec as StackVec;
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
@@ -374,12 +375,12 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get consuming iterator that returns all the keys, in sorted order.
     pub fn into_keys(self) -> IntoKeys<K, V> {
-        IntoKeys(self)
+        IntoKeys(self.into_iter())
     }
 
     /// Get consuming iterator that returns all the values, in sorted order.
     pub fn into_values(self) -> IntoValues<K, V> {
-        IntoValues(self)
+        IntoValues(self.into_iter())
     }
 
     /// Walk the map in sorted order, calling action with reference to key-value pair for each key >= start.
@@ -446,9 +447,7 @@ impl<K, V> IntoIterator for BTreeMap<K, V> {
 
     /// Convert BTreeMap to Iterator.
     fn into_iter(self) -> IntoIter<K, V> {
-        let mut x = IntoIter::new();
-        x.push_tree(self.tree, true);
-        x
+        IntoIter::new(self)
     }
 }
 impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
@@ -1786,12 +1785,51 @@ enum StealResultCon<K, V> {
 
 /// Consuming iterator returned by [BTreeMap::into_iter].
 pub struct IntoIter<K, V> {
+    len: usize,
+    inner: IntoIterInner<K, V>,
+}
+impl<K, V> IntoIter<K, V> {
+    fn new(bt: BTreeMap<K, V>) -> Self {
+        let mut s = Self {
+            len: bt.len(),
+            inner: IntoIterInner::new(),
+        };
+        s.inner.push_tree(bt.tree, true);
+        s
+    }
+}
+
+impl<K, V> Iterator for IntoIter<K, V> {
+    type Item = (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.inner.next();
+        if result.is_some() {
+            self.len -= 1;
+        }
+        result
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let result = self.inner.next_back();
+        if result.is_some() {
+            self.len -= 1;
+        }
+        result
+    }
+}
+impl<K, V> FusedIterator for IntoIter<K, V> {}
+
+struct IntoIterInner<K, V> {
     fwd_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
     bck_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
     fwd_stk: StkConVec<K, V>,
     bck_stk: StkConVec<K, V>,
 }
-impl<K, V> IntoIter<K, V> {
+impl<K, V> IntoIterInner<K, V> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
@@ -1820,61 +1858,6 @@ impl<K, V> IntoIter<K, V> {
             }
         }
     }
-    /*
-        fn push_range<T, R>(&mut self, tree: &'a mut Tree<K, V>, range: &R, both: bool)
-        where
-            T: Ord + ?Sized,
-            K: Borrow<T> + Ord,
-            R: RangeBounds<T>,
-        {
-            match tree {
-                Tree::L(leaf) => {
-                    let (x, y) = leaf.get_xy(range);
-                    self.fwd_leaf = Some(IterLeafMut(leaf.0[x..y].into_iter()));
-                }
-                Tree::NL(t) => {
-                    let (x, y) = t.get_xy(range);
-                    let (v, mut c) = (t.v[x..y].into_iter(), t.c[x..y + 1].into_iter());
-
-                    let child = c.next();
-                    let child_back = if both { c.next_back() } else { None };
-                    let both = both && child_back.is_none();
-
-                    self.fwd_stk.push(StkCon { v, c });
-                    if let Some(child) = child {
-                        self.push_range(child, range, both);
-                    }
-                    if let Some(child_back) = child_back {
-                        self.push_range_back(child_back, range);
-                    }
-                }
-            }
-        }
-        fn push_range_back<T, R>(&mut self, tree: & mut Tree<K, V>, range: &R)
-        where
-            T: Ord + ?Sized,
-            K: Borrow<T> + Ord,
-            R: RangeBounds<T>,
-        {
-            match tree {
-                Tree::L(leaf) => {
-                    let (x, y) = leaf.get_xy(range);
-                    self.bck_leaf = Some(IterLeafMut(leaf.0[x..y].into_iter()));
-                }
-                Tree::NL(t) => {
-                    let (x, y) = t.get_xy(range);
-                    let (v, mut c) = (t.v[x..y].into_iter(), t.c[x..y + 1].into_iter());
-
-                    let child_back = c.next_back();
-
-                    self.bck_stk.push(StkCon { v, c });
-                    if let Some(child_back) = child_back {
-                        self.push_range_back(child_back, range);
-                    }
-                }
-            }
-        }
-    */
 
     fn push_tree_back(&mut self, tree: Tree<K, V>) {
         match tree {
@@ -1914,7 +1897,7 @@ impl<K, V> IntoIter<K, V> {
         StealResultCon::Nothing
     }
 }
-impl<K, V> Iterator for IntoIter<K, V> {
+impl<K, V> Iterator for IntoIterInner<K, V> {
     type Item = (K, V);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -1958,7 +1941,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
         }
     }
 }
-impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
+impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
@@ -2001,9 +1984,6 @@ impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
         }
     }
 }
-impl<K, V> FusedIterator for IntoIter<K, V> {}
-
-//////////////////////////
 
 struct Stk<'a, K, V> {
     v: std::slice::Iter<'a, (K, V)>,
@@ -2230,64 +2210,40 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
 }
 impl<'a, K, V> FusedIterator for Iter<'a, K, V> {}
 
-/*
-/// Consuming iterator, result of converting BTreeMap into an iterator.
-pub struct IntoIter<K, V>(BTreeMap<K, V>);
-impl<K, V> Iterator for IntoIter<K, V> {
-    type Item = (K, V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.pop_first()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.0.len, Some(self.0.len))
-    }
-}
-impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.0.pop_last()
-    }
-}
-impl<K, V> FusedIterator for IntoIter<K, V> {}
-*/
-
 /// Consuming iterator returned by [BTreeMap::into_keys].
-pub struct IntoKeys<K, V>(BTreeMap<K, V>);
+pub struct IntoKeys<K, V>(IntoIter<K, V>);
 impl<K, V> Iterator for IntoKeys<K, V> {
     type Item = K;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(self.0.pop_first()?.0)
+        Some(self.0.next()?.0)
     }
-
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.0.len, Some(self.0.len))
+        self.0.size_hint()
     }
 }
 impl<K, V> DoubleEndedIterator for IntoKeys<K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        Some(self.0.pop_last()?.0)
+        Some(self.0.next_back()?.0)
     }
 }
 impl<K, V> FusedIterator for IntoKeys<K, V> {}
 
 /// Consuming iterator returned by [BTreeMap::into_values].
-pub struct IntoValues<K, V>(BTreeMap<K, V>);
+pub struct IntoValues<K, V>(IntoIter<K, V>);
 impl<K, V> Iterator for IntoValues<K, V> {
     type Item = V;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(self.0.pop_first()?.1)
+        Some(self.0.next()?.1)
     }
-
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.0.len, Some(self.0.len))
+        self.0.size_hint()
     }
 }
 impl<K, V> DoubleEndedIterator for IntoValues<K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        Some(self.0.pop_last()?.1)
+        Some(self.0.next_back()?.1)
     }
 }
 impl<K, V> FusedIterator for IntoValues<K, V> {}

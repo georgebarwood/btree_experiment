@@ -353,6 +353,7 @@ impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
     }
 }
 
+/*
 use std::mem::MaybeUninit;
 
 /// Vec of fixed capacity N, typically allocated on the stack.
@@ -387,9 +388,8 @@ impl<T, const N: usize> StackVec<T, N> {
     /// Panics if Vec is full to capacity.
     pub fn push(&mut self, value: T) {
         assert!(self.len < N);
-        let p = self.v.as_mut_ptr();
         unsafe {
-            let p: *mut T = &mut (*p)[self.len];
+            let p = self.v.as_mut_ptr().cast::<T>().add(self.len);
             p.write(value);
         }
         self.len += 1;
@@ -416,9 +416,8 @@ impl<T, const N: usize> StackVec<T, N> {
     /// Panics if at > len or vec is full.
     pub fn insert(&mut self, at: usize, value: T) {
         assert!(at <= self.len && self.len < N);
-        let p = self.v.as_mut_ptr();
         unsafe {
-            let p: *mut T = &mut (*p)[at];
+            let p = self.v.as_mut_ptr().cast::<T>().add(at);
             let n = self.len - at;
             let to = p.add(1);
             ptr::copy(p, to, n);
@@ -471,6 +470,7 @@ fn test_stackvec() {
     sv.insert(1, 99);
     println!("sv[0..3]={:?}", &sv[0..3]);
 }
+*/
 
 #[test]
 fn test() {
