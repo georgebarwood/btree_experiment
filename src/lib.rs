@@ -17,26 +17,17 @@ use std::{
 
 // Vector types.
 mod vecs;
-// use smallvec::SmallVec;
-// pub use vecs::StackVec;
 use vecs::{FixedCapVec,FixedCapIntoIter};
-use arrayvec::ArrayVec as StackVec;
+use arrayvec::ArrayVec;
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
 type NonLeafChildVec<K, V> = FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
 
-/*
-type PosVec = SmallVec<[u8; 8]>;
-type StkMutVec<'a, K, V> = SmallVec<[StkMut<'a, K, V>; 8]>;
-type StkConVec<K, V> = SmallVec<[StkCon<K, V>; 8]>;
-type StkVec<'a, K, V> = SmallVec<[Stk<'a, K, V>; 8]>;
-*/
-
-type PosVec = StackVec<u8, 10>;
-type StkMutVec<'a, K, V> = StackVec<StkMut<'a, K, V>, 10>;
-type StkConVec<K, V> = StackVec<StkCon<K, V>, 10>;
-type StkVec<'a, K, V> = StackVec<Stk<'a, K, V>, 10>;
+type PosVec = ArrayVec<u8, 10>;
+type StkMutVec<'a, K, V> = ArrayVec<StkMut<'a, K, V>, 10>;
+type StkConVec<K, V> = ArrayVec<StkCon<K, V>, 10>;
+type StkVec<'a, K, V> = ArrayVec<Stk<'a, K, V>, 10>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
