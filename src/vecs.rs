@@ -318,27 +318,26 @@ impl<const CAP: usize, T> Drop for FixedCapVec<CAP, T> {
 
 impl<const CAP: usize, T> IntoIterator for FixedCapVec<CAP, T> {
     type Item = T;
-    type IntoIter = FixedCapIntoIter<CAP, T>;
+    type IntoIter = FixedCapIter<CAP, T>;
 
-    /// Convert BTreeMap to Iterator.
     fn into_iter(self) -> Self::IntoIter {
-        FixedCapIntoIter { start: 0, v: self }
+        FixedCapIter { start: 0, v: self }
     }
 }
 
-pub struct FixedCapIntoIter<const CAP: usize, T> {
+pub struct FixedCapIter<const CAP: usize, T> {
     start: usize,
     v: FixedCapVec<CAP, T>,
 }
 
-impl<const CAP: usize, T> FixedCapIntoIter<CAP, T> {
+impl<const CAP: usize, T> FixedCapIter<CAP, T> {
     pub fn len(&self) -> usize
     {
         self.v.len - self.start
     }
 }
 
-impl<const CAP: usize, T> Iterator for FixedCapIntoIter<CAP, T> {
+impl<const CAP: usize, T> Iterator for FixedCapIter<CAP, T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len {
@@ -350,7 +349,7 @@ impl<const CAP: usize, T> Iterator for FixedCapIntoIter<CAP, T> {
         }
     }
 }
-impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
+impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIter<CAP, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len {
             None
@@ -360,7 +359,7 @@ impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
         }
     }
 }
-impl<const CAP: usize, T> Drop for FixedCapIntoIter<CAP, T> {
+impl<const CAP: usize, T> Drop for FixedCapIter<CAP, T> {
     fn drop(&mut self) {
         while self.len() > 0 {
             self.next();

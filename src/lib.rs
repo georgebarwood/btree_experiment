@@ -18,7 +18,7 @@ use std::{
 // Vector types.
 mod vecs;
 use arrayvec::ArrayVec;
-use vecs::{FixedCapIntoIter, FixedCapVec};
+use vecs::{FixedCapIter, FixedCapVec};
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
@@ -1764,8 +1764,8 @@ impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 //////////////////////////
 
 struct StkCon<K, V> {
-    v: FixedCapIntoIter<NON_LEAF_FULL, (K, V)>,
-    c: FixedCapIntoIter<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
+    v: FixedCapIter<NON_LEAF_FULL, (K, V)>,
+    c: FixedCapIter<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
 }
 
 enum StealResultCon<K, V> {
@@ -1815,8 +1815,8 @@ impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
 impl<K, V> FusedIterator for IntoIter<K, V> {}
 
 struct IntoIterInner<K, V> {
-    fwd_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
-    bck_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
+    fwd_leaf: Option<FixedCapIter<LEAF_FULL, (K, V)>>,
+    bck_leaf: Option<FixedCapIter<LEAF_FULL, (K, V)>>,
     fwd_stk: StkConVec<K, V>,
     bck_stk: StkConVec<K, V>,
 }
