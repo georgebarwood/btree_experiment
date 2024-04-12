@@ -356,12 +356,12 @@ impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIntoIter<CAP, T> {
 use std::mem::MaybeUninit;
 
 /// ToDo
-pub struct StackVec<T> {
+pub struct StackVec<T, const N: usize> {
     len: usize,
-    v: MaybeUninit<[T; 10]>,
+    v: MaybeUninit<[T; N]>,
 }
 
-impl<T> StackVec<T> {
+impl<T, const N: usize> StackVec<T, N> {
     /// ToDo
     pub fn new() -> Self {
         Self {
@@ -372,7 +372,7 @@ impl<T> StackVec<T> {
 
     /// ToDo
     pub fn push(&mut self, value: T) {
-        assert!(self.len < 10);
+        assert!(self.len < N);
         let p = self.v.as_mut_ptr();
         unsafe {
             let p: *mut T = &mut (*p)[self.len];
@@ -396,7 +396,7 @@ impl<T> StackVec<T> {
     }
 }
 
-impl<T> Drop for StackVec<T> {
+impl<T, const N: usize> Drop for StackVec<T, N> {
     fn drop(&mut self) {
         let mut len = self.len;
         while len > 0 {
@@ -406,7 +406,7 @@ impl<T> Drop for StackVec<T> {
     }
 }
 
-impl<T> Deref for StackVec<T> {
+impl<T, const N: usize> Deref for StackVec<T, N> {
     type Target = [T];
     #[inline]
     fn deref(&self) -> &[T] {
@@ -416,7 +416,7 @@ impl<T> Deref for StackVec<T> {
     }
 }
 
-impl<T> DerefMut for StackVec<T> {
+impl<T, const N: usize> DerefMut for StackVec<T, N> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [T] {
         let len = self.len;
@@ -425,7 +425,7 @@ impl<T> DerefMut for StackVec<T> {
     }
 }
 
-impl<T> Default for StackVec<T> {
+impl<T, const N: usize> Default for StackVec<T, N> {
     fn default() -> Self {
         Self::new()
     }
@@ -433,7 +433,7 @@ impl<T> Default for StackVec<T> {
 
 #[test]
 fn test_stackvec() {
-    let mut sv = StackVec::new();
+    let mut sv = StackVec::<i32, 10>::new();
     sv.push(99);
     sv.push(98);
     println!("sv[0..2]={:?}", &sv[0..2]);

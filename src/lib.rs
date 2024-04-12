@@ -33,9 +33,9 @@ type StkVec<'a, K, V> = SmallVec<[Stk<'a, K, V>; 8]>;
 */
 
 // type PosVec = StackVec<u8>;
-type StkMutVec<'a, K, V> = StackVec<StkMut<'a, K, V>>;
-type StkConVec<K, V> = StackVec<StkCon<K, V>>;
-type StkVec<'a, K, V> = StackVec<Stk<'a, K, V>>;
+type StkMutVec<'a, K, V> = StackVec<StkMut<'a, K, V>, 10>;
+type StkConVec<K, V> = StackVec<StkCon<K, V>, 10>;
+type StkVec<'a, K, V> = StackVec<Stk<'a, K, V>, 10>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
@@ -2372,17 +2372,6 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
-fn test_exp_cons_iter() {
-    let mut m = BTreeMap::new();
-    for i in 0..50 {
-        m.insert(i, i);
-    }
-    for (k, v) in m {
-        println!("k={} v={}", k, v);
-    }
-}
-
-#[test]
 fn test_is_this_ub() {
     BTreeMap::new().entry(0).or_insert('a');
 
@@ -2496,6 +2485,34 @@ fn test_std_iter() {
     }
     for _rep in 0..1000 {
         for (k, v) in m.iter() {
+            assert!(k == v);
+        }
+    }
+}
+
+#[test]
+fn test_exp_into_iter() {
+    for _rep in 0..100 {
+        let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let n = 100000;
+        for i in 0..n {
+            m.insert(i, i);
+        }
+        for (k, v) in m {
+            assert!(k == v);
+        }
+    }
+}
+
+#[test]
+fn test_std_into_iter() {
+    for _rep in 0..100 {
+        let mut m = std::collections::BTreeMap::<usize, usize>::default();
+        let n = 100000;
+        for i in 0..n {
+            m.insert(i, i);
+        }
+        for (k, v) in m {
             assert!(k == v);
         }
     }
