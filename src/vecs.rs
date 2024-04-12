@@ -276,6 +276,10 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
         }
         Err(i)
     }
+
+    pub fn iter_con(self) -> FixedCapIterCon<CAP, T> {
+        FixedCapIterCon { v: self }
+    }
 }
 
 impl<const CAP: usize, T> Deref for FixedCapVec<CAP, T> {
@@ -313,6 +317,33 @@ impl<const CAP: usize, T> Drop for FixedCapVec<CAP, T> {
         unsafe {
             self.v.free(CAP);
         }
+    }
+}
+
+pub struct FixedCapIterCon<const CAP: usize, T> {
+    v: FixedCapVec<CAP, T>,
+}
+
+impl<const CAP: usize, T> FixedCapIterCon<CAP, T> {
+    pub fn len(&self) -> usize {
+        self.v.len()
+    }
+}
+
+impl<const CAP: usize, T> Iterator for FixedCapIterCon<CAP, T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if !self.v.is_empty() {
+            Some(self.v.remove(0))
+        } else {
+            None
+        }
+    }
+}
+
+impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIterCon<CAP, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.v.pop()
     }
 }
 

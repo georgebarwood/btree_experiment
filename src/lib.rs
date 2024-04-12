@@ -17,13 +17,14 @@ use std::{
 // Vector types.
 mod vecs;
 use smallvec::SmallVec;
-use vecs::FixedCapVec;
+use vecs::*;
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
 type NonLeafChildVec<K, V> = FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
 type PosVec = SmallVec<[u8; 8]>;
 type StkMutVec<'a, K, V> = SmallVec<[StkMut<'a, K, V>; 8]>;
+type StkConVec<K, V> = SmallVec<[StkCon<K, V>; 8]>;
 type StkVec<'a, K, V> = SmallVec<[Stk<'a, K, V>; 8]>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
@@ -426,6 +427,7 @@ impl<K: PartialOrd, V: PartialOrd> PartialOrd for BTreeMap<K, V> {
 }
 impl<K: Ord, V: Ord> Ord for BTreeMap<K, V> {
     fn cmp(&self, other: &BTreeMap<K, V>) -> Ordering {
+
         self.iter().cmp(other.iter())
     }
 }
@@ -435,7 +437,9 @@ impl<K, V> IntoIterator for BTreeMap<K, V> {
 
     /// Convert BTreeMap to Iterator.
     fn into_iter(self) -> IntoIter<K, V> {
-        IntoIter(self)
+        let mut x = IntoIter::new();
+        x.push_tree(self.tree, true);
+        x
     }
 }
 impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
@@ -1763,6 +1767,240 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
 }
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
+//////////////////////////
+
+struct StkCon<K, V> {
+    v: FixedCapIterCon<NON_LEAF_FULL, (K, V)>,
+    c: FixedCapIterCon<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
+}
+
+enum StealResultCon<K, V> {
+    Value((K, V)),
+    Child(Tree<K, V>),
+    Nothing,
+}
+
+/// ToDo!
+pub struct IntoIter<K, V> {
+    fwd_leaf: Option<FixedCapIterCon<LEAF_FULL, (K, V)>>,
+    bck_leaf: Option<FixedCapIterCon<LEAF_FULL, (K, V)>>,
+    fwd_stk: StkConVec<K, V>,
+    bck_stk: StkConVec<K, V>,
+}
+impl<K, V> IntoIter<K, V> {
+    fn new() -> Self {
+        Self {
+            fwd_leaf: None,
+            bck_leaf: None,
+            fwd_stk: StkConVec::new(),
+            bck_stk: StkConVec::new(),
+        }
+    }
+    fn push_tree(&mut self, tree: Tree<K, V>, both: bool) {
+        match tree {
+            Tree::L(x) => {
+                self.fwd_leaf = Some(x.0.iter_con());
+            }
+            Tree::NL(x) => {
+                let (v, mut c) = (x.v.iter_con(), x.c.iter_con());
+                let child = c.next();
+                let child_back = if both { c.next_back() } else { None };
+                let both = both && child_back.is_none();
+                self.fwd_stk.push(StkCon { v, c });
+                if let Some(child) = child {
+                    self.push_tree(child, both);
+                }
+                if let Some(child_back) = child_back {
+                    self.push_tree_back(child_back);
+                }
+            }
+        }
+    }
+    /*
+        fn push_range<T, R>(&mut self, tree: &'a mut Tree<K, V>, range: &R, both: bool)
+        where
+            T: Ord + ?Sized,
+            K: Borrow<T> + Ord,
+            R: RangeBounds<T>,
+        {
+            match tree {
+                Tree::L(leaf) => {
+                    let (x, y) = leaf.get_xy(range);
+                    self.fwd_leaf = Some(IterLeafMut(leaf.0[x..y].iter_con()));
+                }
+                Tree::NL(t) => {
+                    let (x, y) = t.get_xy(range);
+                    let (v, mut c) = (t.v[x..y].iter_con(), t.c[x..y + 1].iter_con());
+
+                    let child = c.next();
+                    let child_back = if both { c.next_back() } else { None };
+                    let both = both && child_back.is_none();
+
+                    self.fwd_stk.push(StkCon { v, c });
+                    if let Some(child) = child {
+                        self.push_range(child, range, both);
+                    }
+                    if let Some(child_back) = child_back {
+                        self.push_range_back(child_back, range);
+                    }
+                }
+            }
+        }
+        fn push_range_back<T, R>(&mut self, tree: & mut Tree<K, V>, range: &R)
+        where
+            T: Ord + ?Sized,
+            K: Borrow<T> + Ord,
+            R: RangeBounds<T>,
+        {
+            match tree {
+                Tree::L(leaf) => {
+                    let (x, y) = leaf.get_xy(range);
+                    self.bck_leaf = Some(IterLeafMut(leaf.0[x..y].iter_con()));
+                }
+                Tree::NL(t) => {
+                    let (x, y) = t.get_xy(range);
+                    let (v, mut c) = (t.v[x..y].iter_con(), t.c[x..y + 1].iter_con());
+
+                    let child_back = c.next_back();
+
+                    self.bck_stk.push(StkCon { v, c });
+                    if let Some(child_back) = child_back {
+                        self.push_range_back(child_back, range);
+                    }
+                }
+            }
+        }
+    */
+
+    fn push_tree_back(&mut self, tree: Tree<K, V>) {
+        match tree {
+            Tree::L(x) => {
+                self.bck_leaf = Some(x.0.iter_con());
+            }
+            Tree::NL(x) => {
+                let (v, mut c) = (x.v.iter_con(), x.c.iter_con());
+                let child_back = c.next_back();
+                self.bck_stk.push(StkCon { v, c });
+                if let Some(child_back) = child_back {
+                    self.push_tree_back(child_back);
+                }
+            }
+        }
+    }
+    fn steal_bck(&mut self) -> StealResultCon<K, V> {
+        for s in self.bck_stk.iter_mut() {
+            if s.v.len() > s.c.len() {
+                let kv = s.v.next().unwrap();
+                return StealResultCon::Value(kv);
+            } else if let Some(child) = s.c.next() {
+                return StealResultCon::Child(child);
+            }
+        }
+        StealResultCon::Nothing
+    }
+    fn steal_fwd(&mut self) -> StealResultCon<K, V> {
+        for s in self.fwd_stk.iter_mut() {
+            if s.v.len() > s.c.len() {
+                let kv = s.v.next_back().unwrap();
+                return StealResultCon::Value(kv);
+            } else if let Some(child) = s.c.next_back() {
+                return StealResultCon::Child(child);
+            }
+        }
+        StealResultCon::Nothing
+    }
+}
+impl<K, V> Iterator for IntoIter<K, V> {
+    type Item = (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(f) = &mut self.fwd_leaf {
+                if let Some(x) = f.next() {
+                    return Some(x);
+                } else {
+                    self.fwd_leaf = None;
+                }
+            } else if let Some(s) = self.fwd_stk.last_mut() {
+                if let Some(kv) = s.v.next() {
+                    if let Some(child) = s.c.next() {
+                        self.push_tree(child, false);
+                    }
+                    return Some(kv);
+                } else {
+                    self.fwd_stk.pop();
+                }
+            } else {
+                match self.steal_bck() {
+                    StealResultCon::Value(v) => {
+                        return Some(v);
+                    }
+                    StealResultCon::Child(c) => {
+                        self.push_tree(c, false);
+                    }
+                    StealResultCon::Nothing => {
+                        if let Some(f) = &mut self.bck_leaf {
+                            if let Some(x) = f.next() {
+                                return Some(x);
+                            } else {
+                                self.bck_leaf = None;
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(f) = &mut self.bck_leaf {
+                if let Some(x) = f.next_back() {
+                    return Some(x);
+                } else {
+                    self.bck_leaf = None;
+                }
+            } else if let Some(s) = self.bck_stk.last_mut() {
+                if let Some(kv) = s.v.next_back() {
+                    if let Some(child) = s.c.next_back() {
+                        self.push_tree_back(child);
+                    }
+                    return Some(kv);
+                } else {
+                    self.bck_stk.pop();
+                }
+            } else {
+                match self.steal_fwd() {
+                    StealResultCon::Value(v) => {
+                        return Some(v);
+                    }
+                    StealResultCon::Child(c) => {
+                        self.push_tree_back(c);
+                    }
+                    StealResultCon::Nothing => {
+                        if let Some(f) = &mut self.fwd_leaf {
+                            if let Some(x) = f.next_back() {
+                                return Some(x);
+                            } else {
+                                self.fwd_leaf = None;
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+impl<K, V> FusedIterator for IntoIter<K, V> {}
+
+//////////////////////////
+
 struct Stk<'a, K, V> {
     v: std::slice::Iter<'a, (K, V)>,
     c: std::slice::Iter<'a, Tree<K, V>>,
@@ -1988,6 +2226,7 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
 }
 impl<'a, K, V> FusedIterator for Iter<'a, K, V> {}
 
+/*
 /// Consuming iterator, result of converting BTreeMap into an iterator.
 pub struct IntoIter<K, V>(BTreeMap<K, V>);
 impl<K, V> Iterator for IntoIter<K, V> {
@@ -2007,6 +2246,7 @@ impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
     }
 }
 impl<K, V> FusedIterator for IntoIter<K, V> {}
+*/
 
 /// Consuming iterator returned by [BTreeMap::into_keys].
 pub struct IntoKeys<K, V>(BTreeMap<K, V>);
@@ -2128,16 +2368,26 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 #[test]
+fn test_exp_cons_iter() {
+    let mut m = BTreeMap::new();
+    for i in 0..50 {
+        m.insert(i, i);
+    }
+    for (k, v) in m {
+        println!("k={} v={}", k, v);
+    }
+}
+
+#[test]
 fn test_is_this_ub() {
     BTreeMap::new().entry(0).or_insert('a');
 
     let mut m = BTreeMap::new();
-    m.insert(0,'a');
+    m.insert(0, 'a');
     *m.entry(0).or_insert('a') = 'b';
-    match m.entry(0)
-    {
-       Entry::Occupied(e) => e.remove(),
-       _ => panic!()
+    match m.entry(0) {
+        Entry::Occupied(e) => e.remove(),
+        _ => panic!(),
     };
 }
 
@@ -2368,3 +2618,13 @@ fn various_tests() {
 
 #[cfg(test)]
 mod tests;
+
+#[allow(dead_code)]
+fn assert_covariance() {
+        fn into_iter_key<'new>(v: IntoIter<&'static str, ()>) -> IntoIter<&'new str, ()> {
+            v
+        }
+        fn into_iter_val<'new>(v: IntoIter<(), &'static str>) -> IntoIter<(), &'new str> {
+            v
+        }
+}
