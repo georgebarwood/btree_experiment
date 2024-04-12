@@ -32,7 +32,7 @@ type StkConVec<K, V> = SmallVec<[StkCon<K, V>; 8]>;
 type StkVec<'a, K, V> = SmallVec<[Stk<'a, K, V>; 8]>;
 */
 
-type PosVec = StackVec<u8,10>;
+type PosVec = StackVec<u8, 10>;
 type StkMutVec<'a, K, V> = StackVec<StkMut<'a, K, V>, 10>;
 type StkConVec<K, V> = StackVec<StkCon<K, V>, 10>;
 type StkVec<'a, K, V> = StackVec<Stk<'a, K, V>, 10>;
@@ -1784,7 +1784,7 @@ enum StealResultCon<K, V> {
     Nothing,
 }
 
-/// ToDo!
+/// Consuming iterator returned by [BTreeMap::into_iter].
 pub struct IntoIter<K, V> {
     fwd_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,
     bck_leaf: Option<FixedCapIntoIter<LEAF_FULL, (K, V)>>,

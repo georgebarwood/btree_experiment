@@ -340,7 +340,7 @@ impl<const CAP: usize, T> Iterator for FixedCapIntoIter<CAP, T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         if !self.v.is_empty() {
-            Some(self.v.remove(0))
+            Some(self.v.remove(0)) // ToDo : have a count of removed elements.
         } else {
             None
         }
@@ -362,7 +362,7 @@ pub struct StackVec<T, const N: usize> {
 }
 
 impl<T, const N: usize> StackVec<T, N> {
-    /// Construct new empty StackVec.
+    /// Construct new empty Vec.
     pub fn new() -> Self {
         Self {
             len: 0,
@@ -370,7 +370,21 @@ impl<T, const N: usize> StackVec<T, N> {
         }
     }
 
-    /// Push value. Will panic if vec is full to capacity.
+    /// Get Vec length.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if Vec is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Push value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if Vec is full to capacity.
     pub fn push(&mut self, value: T) {
         assert!(self.len < N);
         let p = self.v.as_mut_ptr();
@@ -381,7 +395,7 @@ impl<T, const N: usize> StackVec<T, N> {
         self.len += 1;
     }
 
-    /// Pop value, returns None if stack is empty.
+    /// Pop value, returns None if Vec is empty.
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
@@ -395,9 +409,12 @@ impl<T, const N: usize> StackVec<T, N> {
         }
     }
 
-    /// ToDo
-    pub fn insert(&mut self, at: usize, value: T)
-    {
+    /// Insert value at specified position.
+    ///
+    /// # Panics
+    ///
+    /// Panics if at > len or vec is full.
+    pub fn insert(&mut self, at: usize, value: T) {
         assert!(at <= self.len && self.len < N);
         let p = self.v.as_mut_ptr();
         unsafe {
@@ -408,7 +425,7 @@ impl<T, const N: usize> StackVec<T, N> {
             p.write(value);
         }
         self.len += 1;
-    }        
+    }
 }
 
 impl<T, const N: usize> Drop for StackVec<T, N> {
@@ -451,7 +468,7 @@ fn test_stackvec() {
     let mut sv = StackVec::<i32, 10>::new();
     sv.push(98);
     sv.push(100);
-    sv.insert(1,99);
+    sv.insert(1, 99);
     println!("sv[0..3]={:?}", &sv[0..3]);
 }
 
