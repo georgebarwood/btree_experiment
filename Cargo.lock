@@ -10,7 +10,7 @@ checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
 name = "btree_experiment"
-version = "0.1.68"
+version = "0.1.69"
 dependencies = [
  "arrayvec",
  "serde",
