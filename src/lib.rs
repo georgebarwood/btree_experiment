@@ -1536,19 +1536,26 @@ impl<K, V> NonLeaf<K, V> {
     }
 } // End impl NonLeaf
 
+// Mutable reference iteration.
+
 struct StkMut<'a, K, V> {
     v: std::slice::IterMut<'a, (K, V)>,
     c: std::slice::IterMut<'a, Tree<K, V>>,
 }
 
 enum StealResultMut<'a, K, V> {
-    Value((&'a K, &'a mut V)),
-    Child(&'a mut Tree<K, V>),
+    KV((&'a K, &'a mut V)), // Key-value pair.
+    CT(&'a mut Tree<K, V>), // Child Tree.
     Nothing,
 }
 
 /// Iterator returned by [BTreeMap::iter_mut], [BTreeMap::range_mut].
 pub struct IterMut<'a, K, V> {
+    /* There are two iterations going on to implement DoubleEndedIterator.
+       fwd_leaf and fwd_stk are initially used for forward (next) iteration,
+       once they are exhausted, key-value pairs and child trees are "stolen" from
+       bck_stk and bck_leaf which are (conversely) initially used for next_back iteration.
+    */
     fwd_leaf: Option<IterLeafMut<'a, K, V>>,
     bck_leaf: Option<IterLeafMut<'a, K, V>>,
     fwd_stk: StkMutVec<'a, K, V>,
@@ -1570,15 +1577,15 @@ impl<'a, K, V> IterMut<'a, K, V> {
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
-                let child = c.next();
-                let child_back = if both { c.next_back() } else { None };
-                let both = both && child_back.is_none();
+                let ct = c.next();
+                let ct_back = if both { c.next_back() } else { None };
+                let both = both && ct_back.is_none();
                 self.fwd_stk.push(StkMut { v, c });
-                if let Some(child) = child {
-                    self.push_tree(child, both);
+                if let Some(ct) = ct {
+                    self.push_tree(ct, both);
                 }
-                if let Some(child_back) = child_back {
-                    self.push_tree_back(child_back);
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
                 }
             }
         }
@@ -1598,16 +1605,16 @@ impl<'a, K, V> IterMut<'a, K, V> {
                 let (x, y) = t.get_xy(range);
                 let (v, mut c) = (t.v[x..y].iter_mut(), t.c[x..y + 1].iter_mut());
 
-                let child = c.next();
-                let child_back = if both { c.next_back() } else { None };
-                let both = both && child_back.is_none();
+                let ct = c.next();
+                let ct_back = if both { c.next_back() } else { None };
+                let both = both && ct_back.is_none();
 
                 self.fwd_stk.push(StkMut { v, c });
-                if let Some(child) = child {
-                    self.push_range(child, range, both);
+                if let Some(ct) = ct {
+                    self.push_range(ct, range, both);
                 }
-                if let Some(child_back) = child_back {
-                    self.push_range_back(child_back, range);
+                if let Some(ct_back) = ct_back {
+                    self.push_range_back(ct_back, range);
                 }
             }
         }
@@ -1627,11 +1634,11 @@ impl<'a, K, V> IterMut<'a, K, V> {
                 let (x, y) = t.get_xy(range);
                 let (v, mut c) = (t.v[x..y].iter_mut(), t.c[x..y + 1].iter_mut());
 
-                let child_back = c.next_back();
+                let ct_back = c.next_back();
 
                 self.bck_stk.push(StkMut { v, c });
-                if let Some(child_back) = child_back {
-                    self.push_range_back(child_back, range);
+                if let Some(ct_back) = ct_back {
+                    self.push_range_back(ct_back, range);
                 }
             }
         }
@@ -1643,10 +1650,10 @@ impl<'a, K, V> IterMut<'a, K, V> {
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
-                let child_back = c.next_back();
+                let ct_back = c.next_back();
                 self.bck_stk.push(StkMut { v, c });
-                if let Some(child_back) = child_back {
-                    self.push_tree_back(child_back);
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
                 }
             }
         }
@@ -1655,9 +1662,9 @@ impl<'a, K, V> IterMut<'a, K, V> {
         for s in self.bck_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next().unwrap();
-                return StealResultMut::Value((&kv.0, &mut kv.1));
-            } else if let Some(child) = s.c.next() {
-                return StealResultMut::Child(child);
+                return StealResultMut::KV((&kv.0, &mut kv.1));
+            } else if let Some(ct) = s.c.next() {
+                return StealResultMut::CT(ct);
             }
         }
         StealResultMut::Nothing
@@ -1666,9 +1673,9 @@ impl<'a, K, V> IterMut<'a, K, V> {
         for s in self.fwd_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next_back().unwrap();
-                return StealResultMut::Value((&kv.0, &mut kv.1));
-            } else if let Some(child) = s.c.next_back() {
-                return StealResultMut::Child(child);
+                return StealResultMut::KV((&kv.0, &mut kv.1));
+            } else if let Some(ct) = s.c.next_back() {
+                return StealResultMut::CT(ct);
             }
         }
         StealResultMut::Nothing
@@ -1686,8 +1693,8 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
                 }
             } else if let Some(s) = self.fwd_stk.last_mut() {
                 if let Some(kv) = s.v.next() {
-                    if let Some(child) = s.c.next() {
-                        self.push_tree(child, false);
+                    if let Some(ct) = s.c.next() {
+                        self.push_tree(ct, false);
                     }
                     return Some((&kv.0, &mut kv.1));
                 } else {
@@ -1695,11 +1702,11 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
                 }
             } else {
                 match self.steal_bck() {
-                    StealResultMut::Value(v) => {
-                        return Some(v);
+                    StealResultMut::KV(kv) => {
+                        return Some(kv);
                     }
-                    StealResultMut::Child(c) => {
-                        self.push_tree(c, false);
+                    StealResultMut::CT(ct) => {
+                        self.push_tree(ct, false);
                     }
                     StealResultMut::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
@@ -1729,8 +1736,8 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
                 }
             } else if let Some(s) = self.bck_stk.last_mut() {
                 if let Some(kv) = s.v.next_back() {
-                    if let Some(child) = s.c.next_back() {
-                        self.push_tree_back(child);
+                    if let Some(ct) = s.c.next_back() {
+                        self.push_tree_back(ct);
                     }
                     return Some((&kv.0, &mut kv.1));
                 } else {
@@ -1738,11 +1745,11 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
                 }
             } else {
                 match self.steal_fwd() {
-                    StealResultMut::Value(v) => {
-                        return Some(v);
+                    StealResultMut::KV(kv) => {
+                        return Some(kv);
                     }
-                    StealResultMut::Child(c) => {
-                        self.push_tree_back(c);
+                    StealResultMut::CT(ct) => {
+                        self.push_tree_back(ct);
                     }
                     StealResultMut::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
@@ -1763,7 +1770,7 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
 }
 impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
-//////////////////////////
+// Consuming iteration.
 
 struct StkCon<K, V> {
     v: FixedCapIter<NON_LEAF_FULL, (K, V)>,
@@ -1771,8 +1778,8 @@ struct StkCon<K, V> {
 }
 
 enum StealResultCon<K, V> {
-    Value((K, V)),
-    Child(Tree<K, V>),
+    KV((K, V)),     // Key-value pair.
+    CT(Tree<K, V>), // Child Tree.
     Nothing,
 }
 
@@ -1838,15 +1845,15 @@ impl<K, V> IntoIterInner<K, V> {
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
-                let child = c.next();
-                let child_back = if both { c.next_back() } else { None };
-                let both = both && child_back.is_none();
+                let ct = c.next();
+                let ct_back = if both { c.next_back() } else { None };
+                let both = both && ct_back.is_none();
                 self.fwd_stk.push(StkCon { v, c });
-                if let Some(child) = child {
-                    self.push_tree(child, both);
+                if let Some(ct) = ct {
+                    self.push_tree(ct, both);
                 }
-                if let Some(child_back) = child_back {
-                    self.push_tree_back(child_back);
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
                 }
             }
         }
@@ -1858,10 +1865,10 @@ impl<K, V> IntoIterInner<K, V> {
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
-                let child_back = c.next_back();
+                let ct_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
-                if let Some(child_back) = child_back {
-                    self.push_tree_back(child_back);
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
                 }
             }
         }
@@ -1870,9 +1877,9 @@ impl<K, V> IntoIterInner<K, V> {
         for s in self.bck_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next().unwrap();
-                return StealResultCon::Value(kv);
-            } else if let Some(child) = s.c.next() {
-                return StealResultCon::Child(child);
+                return StealResultCon::KV(kv);
+            } else if let Some(ct) = s.c.next() {
+                return StealResultCon::CT(ct);
             }
         }
         StealResultCon::Nothing
@@ -1881,9 +1888,9 @@ impl<K, V> IntoIterInner<K, V> {
         for s in self.fwd_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next_back().unwrap();
-                return StealResultCon::Value(kv);
-            } else if let Some(child) = s.c.next_back() {
-                return StealResultCon::Child(child);
+                return StealResultCon::KV(kv);
+            } else if let Some(ct) = s.c.next_back() {
+                return StealResultCon::CT(ct);
             }
         }
         StealResultCon::Nothing
@@ -1901,8 +1908,8 @@ impl<K, V> Iterator for IntoIterInner<K, V> {
                 }
             } else if let Some(s) = self.fwd_stk.last_mut() {
                 if let Some(kv) = s.v.next() {
-                    if let Some(child) = s.c.next() {
-                        self.push_tree(child, false);
+                    if let Some(ct) = s.c.next() {
+                        self.push_tree(ct, false);
                     }
                     return Some(kv);
                 } else {
@@ -1910,11 +1917,11 @@ impl<K, V> Iterator for IntoIterInner<K, V> {
                 }
             } else {
                 match self.steal_bck() {
-                    StealResultCon::Value(v) => {
-                        return Some(v);
+                    StealResultCon::KV(kv) => {
+                        return Some(kv);
                     }
-                    StealResultCon::Child(c) => {
-                        self.push_tree(c, false);
+                    StealResultCon::CT(ct) => {
+                        self.push_tree(ct, false);
                     }
                     StealResultCon::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
@@ -1944,8 +1951,8 @@ impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
                 }
             } else if let Some(s) = self.bck_stk.last_mut() {
                 if let Some(kv) = s.v.next_back() {
-                    if let Some(child) = s.c.next_back() {
-                        self.push_tree_back(child);
+                    if let Some(ct) = s.c.next_back() {
+                        self.push_tree_back(ct);
                     }
                     return Some(kv);
                 } else {
@@ -1953,11 +1960,11 @@ impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
                 }
             } else {
                 match self.steal_fwd() {
-                    StealResultCon::Value(v) => {
-                        return Some(v);
+                    StealResultCon::KV(kv) => {
+                        return Some(kv);
                     }
-                    StealResultCon::Child(c) => {
-                        self.push_tree_back(c);
+                    StealResultCon::CT(ct) => {
+                        self.push_tree_back(ct);
                     }
                     StealResultCon::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
@@ -1977,14 +1984,16 @@ impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
     }
 }
 
+// Immutable reference iteration.
+
 struct Stk<'a, K, V> {
     v: std::slice::Iter<'a, (K, V)>,
     c: std::slice::Iter<'a, Tree<K, V>>,
 }
 
 enum StealResult<'a, K, V> {
-    Value((&'a K, &'a V)),
-    Child(&'a Tree<K, V>),
+    KV((&'a K, &'a V)), // Key-value pair.
+    CT(&'a Tree<K, V>), // Child Tree.
     Nothing,
 }
 
@@ -2011,15 +2020,15 @@ impl<'a, K, V> Iter<'a, K, V> {
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.iter(), x.c.iter());
-                let child = c.next();
-                let child_back = if both { c.next_back() } else { None };
-                let both = both && child_back.is_none();
+                let ct = c.next();
+                let ct_back = if both { c.next_back() } else { None };
+                let both = both && ct_back.is_none();
                 self.fwd_stk.push(Stk { v, c });
-                if let Some(child) = child {
-                    self.push_tree(child, both);
+                if let Some(ct) = ct {
+                    self.push_tree(ct, both);
                 }
-                if let Some(child_back) = child_back {
-                    self.push_tree_back(child_back);
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
                 }
             }
         }
@@ -2039,16 +2048,16 @@ impl<'a, K, V> Iter<'a, K, V> {
                 let (x, y) = t.get_xy(range);
                 let (v, mut c) = (t.v[x..y].iter(), t.c[x..y + 1].iter());
 
-                let child = c.next();
-                let child_back = if both { c.next_back() } else { None };
-                let both = both && child_back.is_none();
+                let ct = c.next();
+                let ct_back = if both { c.next_back() } else { None };
+                let both = both && ct_back.is_none();
 
                 self.fwd_stk.push(Stk { v, c });
-                if let Some(child) = child {
-                    self.push_range(child, range, both);
+                if let Some(ct) = ct {
+                    self.push_range(ct, range, both);
                 }
-                if let Some(child_back) = child_back {
-                    self.push_range_back(child_back, range);
+                if let Some(ct_back) = ct_back {
+                    self.push_range_back(ct_back, range);
                 }
             }
         }
@@ -2067,10 +2076,10 @@ impl<'a, K, V> Iter<'a, K, V> {
             Tree::NL(t) => {
                 let (x, y) = t.get_xy(range);
                 let (v, mut c) = (t.v[x..y].iter(), t.c[x..y + 1].iter());
-                let child_back = c.next_back();
+                let ct_back = c.next_back();
                 self.bck_stk.push(Stk { v, c });
-                if let Some(child_back) = child_back {
-                    self.push_range_back(child_back, range);
+                if let Some(ct_back) = ct_back {
+                    self.push_range_back(ct_back, range);
                 }
             }
         }
@@ -2082,10 +2091,10 @@ impl<'a, K, V> Iter<'a, K, V> {
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.iter(), x.c.iter());
-                let child_back = c.next_back();
+                let ct_back = c.next_back();
                 self.bck_stk.push(Stk { v, c });
-                if let Some(child_back) = child_back {
-                    self.push_tree_back(child_back);
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
                 }
             }
         }
@@ -2094,9 +2103,9 @@ impl<'a, K, V> Iter<'a, K, V> {
         for s in self.bck_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next().unwrap();
-                return StealResult::Value((&kv.0, &kv.1));
-            } else if let Some(child) = s.c.next() {
-                return StealResult::Child(child);
+                return StealResult::KV((&kv.0, &kv.1));
+            } else if let Some(ct) = s.c.next() {
+                return StealResult::CT(ct);
             }
         }
         StealResult::Nothing
@@ -2105,9 +2114,9 @@ impl<'a, K, V> Iter<'a, K, V> {
         for s in self.fwd_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next_back().unwrap();
-                return StealResult::Value((&kv.0, &kv.1));
-            } else if let Some(child) = s.c.next_back() {
-                return StealResult::Child(child);
+                return StealResult::KV((&kv.0, &kv.1));
+            } else if let Some(ct) = s.c.next_back() {
+                return StealResult::CT(ct);
             }
         }
         StealResult::Nothing
@@ -2125,8 +2134,8 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
                 }
             } else if let Some(s) = self.fwd_stk.last_mut() {
                 if let Some(kv) = s.v.next() {
-                    if let Some(child) = s.c.next() {
-                        self.push_tree(child, false);
+                    if let Some(ct) = s.c.next() {
+                        self.push_tree(ct, false);
                     }
                     return Some((&kv.0, &kv.1));
                 } else {
@@ -2134,11 +2143,11 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
                 }
             } else {
                 match self.steal_bck() {
-                    StealResult::Value(v) => {
-                        return Some(v);
+                    StealResult::KV(kv) => {
+                        return Some(kv);
                     }
-                    StealResult::Child(c) => {
-                        self.push_tree(c, false);
+                    StealResult::CT(ct) => {
+                        self.push_tree(ct, false);
                     }
                     StealResult::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
@@ -2168,8 +2177,8 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
                 }
             } else if let Some(s) = self.bck_stk.last_mut() {
                 if let Some(kv) = s.v.next_back() {
-                    if let Some(child) = s.c.next_back() {
-                        self.push_tree_back(child);
+                    if let Some(ct) = s.c.next_back() {
+                        self.push_tree_back(ct);
                     }
                     return Some((&kv.0, &kv.1));
                 } else {
@@ -2177,11 +2186,11 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
                 }
             } else {
                 match self.steal_fwd() {
-                    StealResult::Value(v) => {
-                        return Some(v);
+                    StealResult::KV(kv) => {
+                        return Some(kv);
                     }
-                    StealResult::Child(c) => {
-                        self.push_tree_back(c);
+                    StealResult::CT(ct) => {
+                        self.push_tree_back(ct);
                     }
                     StealResult::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
