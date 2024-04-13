@@ -295,10 +295,12 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Ord,
     {
-        while let Some((k, v)) = other.pop_first() {
-            self.insert(k, v);
+        let (tree, len) = (std::mem::take(&mut other.tree), other.len);
+        other.len = 0;
+        let temp = BTreeMap { len, tree };
+        for (k, v) in temp {
+            self.insert(k, v); // Could have append method which would be faster, or some kind of cursor.
         }
-        other.clear();
     }
 
     /// Splits the collection into two at the given key.
@@ -307,6 +309,7 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Borrow<Q> + Ord,
     {
+        // This could be implemented more efficiently.
         let mut map = Self::new();
         while let Some((k, v)) = self.pop_last() {
             if k.borrow() < key {
