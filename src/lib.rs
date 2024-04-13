@@ -1655,7 +1655,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
         for s in self.bck_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next().unwrap();
-                return StealResultMut::Value((&mut kv.0, &mut kv.1));
+                return StealResultMut::Value((&kv.0, &mut kv.1));
             } else if let Some(child) = s.c.next() {
                 return StealResultMut::Child(child);
             }
@@ -1666,7 +1666,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
         for s in self.fwd_stk.iter_mut() {
             if s.v.len() > s.c.len() {
                 let kv = s.v.next_back().unwrap();
-                return StealResultMut::Value((&mut kv.0, &mut kv.1));
+                return StealResultMut::Value((&kv.0, &mut kv.1));
             } else if let Some(child) = s.c.next_back() {
                 return StealResultMut::Child(child);
             }
@@ -1689,7 +1689,7 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
                     if let Some(child) = s.c.next() {
                         self.push_tree(child, false);
                     }
-                    return Some((&mut kv.0, &mut kv.1));
+                    return Some((&kv.0, &mut kv.1));
                 } else {
                     self.fwd_stk.pop();
                 }
@@ -1732,7 +1732,7 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
                     if let Some(child) = s.c.next_back() {
                         self.push_tree_back(child);
                     }
-                    return Some((&mut kv.0, &mut kv.1));
+                    return Some((&kv.0, &mut kv.1));
                 } else {
                     self.bck_stk.pop();
                 }
