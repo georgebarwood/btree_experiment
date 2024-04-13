@@ -171,7 +171,7 @@ fn test_iter() {
         assert_eq!(iter.next(), None);
     }
     test(size, map.iter().map(|(&k, &v)| (k, v)));
-    test(size, map.iter_mut().map(|(&mut k, &mut v)| (k, v)));
+    test(size, map.iter_mut().map(|(&k, &mut v)| (k, v)));
     test(size, map.into_iter());
 }
 
@@ -193,7 +193,7 @@ fn test_iter_rev() {
         assert_eq!(iter.next(), None);
     }
     test(size, map.iter().rev().map(|(&k, &v)| (k, v)));
-    test(size, map.iter_mut().rev().map(|(&mut k, &mut v)| (k, v)));
+    test(size, map.iter_mut().rev().map(|(&k, &mut v)| (k, v)));
     test(size, map.into_iter().rev());
 }
 
@@ -230,12 +230,12 @@ fn test_iter_entering_root_twice() {
     let mut it = map.iter_mut();
     let front = it.next().unwrap();
     let back = it.next_back().unwrap();
-    assert_eq!(front, (&mut 0, &mut 0));
-    assert_eq!(back, (&mut 1, &mut 1));
+    assert_eq!(front, (&0, &mut 0));
+    assert_eq!(back, (&1, &mut 1));
     *front.1 = 24;
     *back.1 = 42;
-    assert_eq!(front, (&mut 0, &mut 24));
-    assert_eq!(back, (&mut 1, &mut 42));
+    assert_eq!(front, (&0, &mut 24));
+    assert_eq!(back, (&1, &mut 42));
     assert_eq!(it.next(), None);
     assert_eq!(it.next_back(), None);
 }
@@ -264,7 +264,7 @@ fn test_iter_mixed() {
         assert_eq!(iter.next(), None);
     }
     test(size, map.iter().map(|(&k, &v)| (k, v)));
-    test(size, map.iter_mut().map(|(&mut k, &mut v)| (k, v)));
+    test(size, map.iter_mut().map(|(&k, &mut v)| (k, v)));
     test(size, map.into_iter());
 }
 
@@ -289,12 +289,12 @@ fn test_iter_min_max() {
     a.insert(2, 24);
     assert_eq!(a.iter().min(), Some((&1, &42)));
     assert_eq!(a.iter().max(), Some((&2, &24)));
-    assert_eq!(a.iter_mut().min(), Some((&mut 1, &mut 42)));
-    assert_eq!(a.iter_mut().max(), Some((&mut 2, &mut 24)));
+    assert_eq!(a.iter_mut().min(), Some((&1, &mut 42)));
+    assert_eq!(a.iter_mut().max(), Some((&2, &mut 24)));
     assert_eq!(a.range(..).min(), Some((&1, &42)));
     assert_eq!(a.range(..).max(), Some((&2, &24)));
-    assert_eq!(a.range_mut(..).min(), Some((&mut 1, &mut 42)));
-    assert_eq!(a.range_mut(..).max(), Some((&mut 2, &mut 24)));
+    assert_eq!(a.range_mut(..).min(), Some((&1, &mut 42)));
+    assert_eq!(a.range_mut(..).max(), Some((&2, &mut 24)));
     assert_eq!(a.keys().min(), Some(&1));
     assert_eq!(a.keys().max(), Some(&2));
     assert_eq!(a.values().min(), Some(&24));
@@ -611,7 +611,7 @@ fn test_range_mut() {
         for j in (i..size).step_by(step) {
             let mut kvs = map
                 .range_mut((Included(&i), Included(&j)))
-                .map(|(&mut k, &mut v)| (k, v));
+                .map(|(&k, &mut v)| (k, v));
             let mut pairs = (i..=j).map(|i| (i, i));
 
             for (kv, pair) in kvs.by_ref().zip(pairs.by_ref()) {

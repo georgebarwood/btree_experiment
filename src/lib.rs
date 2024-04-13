@@ -1,8 +1,9 @@
 //! This crate implements a BTreeMap similar to std::collections::BTreeMap.
 //!
-//! One difference is that keys (as well as values) can be mutated using mutable iterators.
+//! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
 //!
-//! Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
+
+// Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
 
 #![deny(missing_docs)]
 use std::{
@@ -22,7 +23,7 @@ use vecs::{FixedCapIter, FixedCapVec};
 
 type LeafVec<K, V> = FixedCapVec<LEAF_FULL, (K, V)>;
 type NonLeafVec<K, V> = FixedCapVec<NON_LEAF_FULL, (K, V)>;
-type NonLeafChildVec<K, V> = FixedCapVec<{ NON_LEAF_FULL + 1 }, Tree<K, V>>;
+type NonLeafChildVec<K, V> = FixedCapVec<CHILD_FULL, Tree<K, V>>;
 
 type PosVec = ArrayVec<u8, 10>;
 type StkMutVec<'a, K, V> = ArrayVec<StkMut<'a, K, V>, 10>;
@@ -35,6 +36,7 @@ const LEAF_SPLIT: usize = 20;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
 const NON_LEAF_SPLIT: usize = 30;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
+const CHILD_FULL: usize = NON_LEAF_FULL + 1;
 
 fn check_range<T, R>(range: &R)
 where
@@ -275,13 +277,13 @@ impl<K, V> BTreeMap<K, V> {
         self.tree.iter().next_back()
     }
 
-    /// Get mutable references to first key and value.
-    pub fn first_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
+    /// Get references to first key and value, value reference is mutable.
+    fn first_key_value_mut(&mut self) -> Option<(&K, &mut V)> {
         self.tree.iter_mut().next()
     }
 
-    /// Get mutable references to last key and value.
-    pub fn last_key_value_mut(&mut self) -> Option<(&mut K, &mut V)> {
+    /// Get references to last key and value, value reference is mutable.
+    fn last_key_value_mut(&mut self) -> Option<(&K, &mut V)> {
         self.tree.iter_mut().next_back()
     }
 
@@ -449,7 +451,7 @@ impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
     }
 }
 impl<'a, K, V> IntoIterator for &'a mut BTreeMap<K, V> {
-    type Item = (&'a mut K, &'a mut V);
+    type Item = (&'a K, &'a mut V);
     type IntoIter = IterMut<'a, K, V>;
     fn into_iter(self) -> IterMut<'a, K, V> {
         self.iter_mut()
@@ -897,7 +899,7 @@ enum Tree<K, V> {
 }
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Tree::L(Leaf(FixedCapVec::new()))
+        Tree::L(Leaf(LeafVec::new()))
     }
 }
 impl<K, V> Tree<K, V> {
@@ -1540,7 +1542,7 @@ struct StkMut<'a, K, V> {
 }
 
 enum StealResultMut<'a, K, V> {
-    Value((&'a mut K, &'a mut V)),
+    Value((&'a K, &'a mut V)),
     Child(&'a mut Tree<K, V>),
     Nothing,
 }
@@ -1673,7 +1675,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
     }
 }
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
-    type Item = (&'a mut K, &'a mut V);
+    type Item = (&'a K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(f) = &mut self.fwd_leaf {
@@ -1765,7 +1767,7 @@ impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
 
 struct StkCon<K, V> {
     v: FixedCapIter<NON_LEAF_FULL, (K, V)>,
-    c: FixedCapIter<{ NON_LEAF_FULL + 1 }, Tree<K, V>>,
+    c: FixedCapIter<CHILD_FULL, Tree<K, V>>,
 }
 
 enum StealResultCon<K, V> {
@@ -1849,7 +1851,6 @@ impl<K, V> IntoIterInner<K, V> {
             }
         }
     }
-
     fn push_tree_back(&mut self, tree: Tree<K, V>) {
         match tree {
             Tree::L(x) => {
@@ -2243,7 +2244,7 @@ impl<K, V> FusedIterator for IntoValues<K, V> {}
 
 struct IterLeafMut<'a, K, V>(std::slice::IterMut<'a, (K, V)>);
 impl<'a, K, V> Iterator for IterLeafMut<'a, K, V> {
-    type Item = (&'a mut K, &'a mut V);
+    type Item = (&'a K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
         let &mut (ref mut k, ref mut v) = self.0.next()?;
         Some((k, v))
