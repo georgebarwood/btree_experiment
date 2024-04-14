@@ -16,6 +16,116 @@ use std::{
     ops::{Bound, RangeBounds},
 };
 
+#[test]
+fn cursor_test() {
+    let n = 100000;
+    let mut m = BTreeMap::<usize, usize>::new();
+    for i in 0..n {
+        m.insert(i, i);
+    }
+    let mut c = m.lower_bound_mut(Bound::Excluded(&5));
+    for i in 6..n {
+        let (k, v) = c.next().unwrap();
+        // println!("x={:?}", x);
+        assert_eq!((*k, *v), (i, i))
+    }
+}
+
+/// Very incomplete (under development)
+pub struct CursorMut<'a, K, V> {
+    _map: *mut BTreeMap<K, V>,
+    leaf: Option<*mut Leaf<K, V>>,
+    index: usize,
+    stack: Vec<(*mut NonLeaf<K, V>, usize)>,
+    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
+}
+
+impl<'a, K, V> CursorMut<'a, K, V> {
+    fn make(bt: &mut BTreeMap<K, V>) -> Self {
+        Self {
+            _map: bt,
+            leaf: None,
+            index: 0,
+            stack: Vec::new(),
+            _pd: PhantomData,
+        }
+    }
+
+    fn lower_bound<Q>(bt: &mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        let mut s = Self::make(bt);
+        s.push_lower(&mut bt.tree, bound);
+        s
+    }
+
+    fn push_lower<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match tree {
+            Tree::L(leaf) => {
+                self.leaf = Some(leaf);
+                self.index = leaf.get_lower(bound);
+            }
+            Tree::NL(x) => {
+                self.stack.push((x, 0));
+                let c = &mut x.c[0];
+                self.push_lower(c, bound);
+            }
+        }
+    }
+
+    fn push(&mut self, tree: &mut Tree<K, V>) {
+        match tree {
+            Tree::L(leaf) => {
+                self.leaf = Some(leaf);
+                self.index = 0;
+            }
+            Tree::NL(x) => {
+                self.stack.push((x, 0));
+                let c = &mut x.c[0];
+                self.push(c);
+            }
+        }
+    }
+
+    /// Advance the cursor, returns references to the key and value of the element that it moved over.
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Option<(&K, &mut V)> {
+        unsafe {
+            match self.leaf {
+                None => None,
+                Some(leaf) => {
+                    if self.index == (*leaf).0.len() {
+                        loop {
+                            if let Some((nl, mut ix)) = self.stack.pop() {
+                                if ix < (*nl).v.len() {
+                                    let kv: *mut (K, V) = (*nl).v.ixm(ix);
+                                    ix += 1;
+                                    let ct = (*nl).c.ixm(ix);
+                                    self.stack.push((nl, ix));
+                                    self.push(ct);
+                                    return Some((&(*kv).0, &mut (*kv).1));
+                                }
+                            } else {
+                                return None;
+                            }
+                        }
+                    } else {
+                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
+                        self.index += 1;
+                        Some((&(*kv).0, &mut (*kv).1))
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Vector types.
 mod vecs;
 use arrayvec::ArrayVec;
@@ -83,6 +193,15 @@ impl<K, V> Default for BTreeMap<K, V> {
     }
 }
 impl<K, V> BTreeMap<K, V> {
+    /// Get a mutable cursor positioned per the given bound.
+    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        CursorMut::lower_bound(self, bound)
+    }
+
     #[cfg(test)]
     fn check(&self) {}
 
@@ -1113,6 +1232,32 @@ struct Leaf<K, V>(LeafVec<K, V>);
 impl<K, V> Leaf<K, V> {
     fn full(&self) -> bool {
         self.0.len() >= LEAF_FULL
+    }
+
+    fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match bound {
+            Bound::Unbounded => {
+                0
+            }
+            Bound::Included(k) => {
+                let mut x = 0;
+                while x < self.0.len() && self.0.ix(x).0.borrow() < k {
+                    x += 1;
+                }
+                x
+            }
+            Bound::Excluded(k) => {
+                let mut x = 0;
+                while x < self.0.len() && self.0.ix(x).0.borrow() <= k {
+                    x += 1;
+                }
+                x
+            }
+        }
     }
 
     fn split(&mut self) -> ((K, V), LeafVec<K, V>) {
