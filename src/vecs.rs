@@ -265,7 +265,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
     {
         let (mut i, mut j) = (0, self.len);
         while i < j {
-            let m = i + (j - i) / 2;
+            let m = ( i + j ) / 2;
             match f(self.ix(m)) {
                 Ordering::Equal => {
                     return Ok(m);
