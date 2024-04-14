@@ -1843,8 +1843,8 @@ impl<K, V> IntoIterInner<K, V> {
     }
     fn push_tree(&mut self, tree: Tree<K, V>, both: bool) {
         match tree {
-            Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.0.into_iter());
+            Tree::L(x) => {
+                self.fwd_leaf = Some(x.0.into_iter());
             }
             Tree::NL(x) => {
                 let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
