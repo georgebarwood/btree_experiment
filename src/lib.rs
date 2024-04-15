@@ -23,12 +23,57 @@ fn cursor_test() {
     for i in 0..n {
         m.insert(i, i);
     }
-    let mut c = m.lower_bound_mut(Bound::Excluded(&5));
-    for i in 6..n {
+    let mut c = m.lower_bound_mut(Bound::Included(&105));
+    for i in 105..n {
         let (k, v) = c.next().unwrap();
         // println!("x={:?}", x);
         assert_eq!((*k, *v), (i, i))
     }
+
+    let mut c = m.lower_bound_mut(Bound::Excluded(&105));
+    for i in 106..n {
+        let (k, v) = c.next().unwrap();
+        // println!("x={:?}", x);
+        assert_eq!((*k, *v), (i, i))
+    }
+
+    let mut c = m.upper_bound_mut(Bound::Included(&105));
+    for i in 106..n {
+        let (k, v) = c.next().unwrap();
+        // println!("x={:?}", x);
+        assert_eq!((*k, *v), (i, i))
+    }
+
+    let mut c = m.upper_bound_mut(Bound::Excluded(&105));
+    for i in 105..n {
+        let (k, v) = c.next().unwrap();
+        // println!("x={:?}", x);
+        assert_eq!((*k, *v), (i, i))
+    }
+
+    let mut a = BTreeMap::new();
+    a.insert(1, "a");
+    a.insert(2, "b");
+    a.insert(3, "c");
+    a.insert(4, "d");
+    let mut cursor = a.lower_bound_mut(Bound::Included(&2));
+    assert_eq!(cursor.peek_prev(), Some((&1, &mut "a")));
+    assert_eq!(cursor.peek_next(), Some((&2, &mut "b")));
+    let mut cursor = a.lower_bound_mut(Bound::Excluded(&2));
+    assert_eq!(cursor.peek_prev(), Some((&2, &mut "b")));
+    assert_eq!(cursor.peek_next(), Some((&3, &mut "c")));
+
+    let mut a = BTreeMap::new();
+    a.insert(1, "a");
+    a.insert(2, "b");
+    a.insert(3, "c");
+    a.insert(4, "d");
+    let mut cursor = a.upper_bound_mut(Bound::Included(&3));
+    assert_eq!(cursor.peek_prev(), Some((&3, &mut "c")));
+    assert_eq!(cursor.peek_next(), Some((&4, &mut "d")));
+    let mut cursor = a.upper_bound_mut(Bound::Excluded(&3));
+    assert_eq!(cursor.peek_prev(), Some((&2, &mut "b")));
+    assert_eq!(cursor.peek_next(), Some((&3, &mut "c")));
 }
 
 /// Very incomplete (under development)
@@ -61,6 +106,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         s
     }
 
+    fn upper_bound<Q>(bt: &mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        let mut s = Self::make(bt);
+        s.push_upper(&mut bt.tree, bound);
+        s
+    }
+
     fn push_lower<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
@@ -71,10 +126,30 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 self.leaf = Some(leaf);
                 self.index = leaf.get_lower(bound);
             }
-            Tree::NL(x) => {
-                self.stack.push((x, 0));
-                let c = &mut x.c[0];
+            Tree::NL(nl) => {
+                let ix = nl.get_lower(bound);
+                self.stack.push((nl, ix));
+                let c = &mut nl.c[ix];
                 self.push_lower(c, bound);
+            }
+        }
+    }
+
+    fn push_upper<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match tree {
+            Tree::L(leaf) => {
+                self.leaf = Some(leaf);
+                self.index = leaf.get_upper(bound);
+            }
+            Tree::NL(nl) => {
+                let ix = nl.get_upper(bound);
+                self.stack.push((nl, ix));
+                let c = &mut nl.c[ix];
+                self.push_upper(c, bound);
             }
         }
     }
@@ -118,6 +193,50 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                     } else {
                         let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
                         self.index += 1;
+                        Some((&(*kv).0, &mut (*kv).1))
+                    }
+                }
+            }
+        }
+    }
+    /// Returns references to the next key/value pair.
+    pub fn peek_next(&mut self) -> Option<(&K, &mut V)> {
+        unsafe {
+            match self.leaf {
+                None => None,
+                Some(leaf) => {
+                    if self.index == (*leaf).0.len() {
+                        for (nl, ix) in self.stack.iter().rev() {
+                            if *ix < (**nl).v.len() {
+                                let kv: *mut (K, V) = (**nl).v.ixm(*ix);
+                                return Some((&(*kv).0, &mut (*kv).1));
+                            }
+                        }
+                        return None;
+                    } else {
+                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
+                        Some((&(*kv).0, &mut (*kv).1))
+                    }
+                }
+            }
+        }
+    }
+    /// Returns references to the previous key/value pair.
+    pub fn peek_prev(&mut self) -> Option<(&K, &mut V)> {
+        unsafe {
+            match self.leaf {
+                None => None,
+                Some(leaf) => {
+                    if self.index == 0 {
+                        for (nl, ix) in self.stack.iter().rev() {
+                            if *ix > 0 {
+                                let kv: *mut (K, V) = (**nl).v.ixm(*ix - 1);
+                                return Some((&(*kv).0, &mut (*kv).1));
+                            }
+                        }
+                        return None;
+                    } else {
+                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index - 1);
                         Some((&(*kv).0, &mut (*kv).1))
                     }
                 }
@@ -193,15 +312,6 @@ impl<K, V> Default for BTreeMap<K, V> {
     }
 }
 impl<K, V> BTreeMap<K, V> {
-    /// Get a mutable cursor positioned per the given bound.
-    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        CursorMut::lower_bound(self, bound)
-    }
-
     #[cfg(test)]
     fn check(&self) {}
 
@@ -496,6 +606,24 @@ impl<K, V> BTreeMap<K, V> {
     /// Get consuming iterator that returns all the values, in sorted order.
     pub fn into_values(self) -> IntoValues<K, V> {
         IntoValues(self.into_iter())
+    }
+
+    /// Get a mutable cursor positioned per the given bound.
+    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        CursorMut::lower_bound(self, bound)
+    }
+
+    /// Get a mutable cursor positioned per the given bound.
+    pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        CursorMut::upper_bound(self, bound)
     }
 
     /// Walk the map in sorted order, calling action with reference to key-value pair for each key >= start.
@@ -1240,23 +1368,33 @@ impl<K, V> Leaf<K, V> {
         Q: Ord + ?Sized,
     {
         match bound {
-            Bound::Unbounded => {
-                0
-            }
-            Bound::Included(k) => {
-                let mut x = 0;
-                while x < self.0.len() && self.0.ix(x).0.borrow() < k {
-                    x += 1;
-                }
-                x
-            }
-            Bound::Excluded(k) => {
-                let mut x = 0;
-                while x < self.0.len() && self.0.ix(x).0.borrow() <= k {
-                    x += 1;
-                }
-                x
-            }
+            Bound::Unbounded => 0,
+            Bound::Included(k) => match self.0.search(|kv| kv.0.borrow().cmp(k)) {
+                Ok(x) => x,
+                Err(x) => x,
+            },
+            Bound::Excluded(k) => match self.0.search(|kv| kv.0.borrow().cmp(k)) {
+                Ok(x) => x + 1,
+                Err(x) => x,
+            },
+        }
+    }
+
+    fn get_upper<Q>(&self, bound: Bound<&Q>) -> usize
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match bound {
+            Bound::Unbounded => self.0.len(),
+            Bound::Included(k) => match self.0.search(|x| x.0.borrow().cmp(k)) {
+                Ok(x) => x + 1,
+                Err(x) => x,
+            },
+            Bound::Excluded(k) => match self.0.search(|x| x.0.borrow().cmp(k)) {
+                Ok(x) => x,
+                Err(x) => x,
+            },
         }
     }
 
@@ -1438,6 +1576,42 @@ struct NonLeaf<K, V> {
 impl<K, V> NonLeaf<K, V> {
     fn full(&self) -> bool {
         self.v.len() == NON_LEAF_FULL
+    }
+
+    fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match bound {
+            Bound::Unbounded => 0,
+            Bound::Included(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+                Ok(x) => x,
+                Err(x) => x,
+            },
+            Bound::Excluded(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+                Ok(x) => x + 1,
+                Err(x) => x,
+            },
+        }
+    }
+
+    fn get_upper<Q>(&self, bound: Bound<&Q>) -> usize
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match bound {
+            Bound::Unbounded => self.v.len(),
+            Bound::Included(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+                Ok(x) => x + 1,
+                Err(x) => x,
+            },
+            Bound::Excluded(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+                Ok(x) => x,
+                Err(x) => x,
+            },
+        }
     }
 
     fn skip<Q>(&self, key: &Q) -> usize
