@@ -18,7 +18,7 @@ use std::{
 
 #[test]
 fn mut_cursor_test() {
-    let n = 500;
+    let n = 2000;
     let mut m = BTreeMap::<usize, usize>::new();
     for i in 0..n {
         m.insert(i, i);
@@ -141,7 +141,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 Tree::NL(x) => {
                     let ix = x.get_lower(bound);
                     self.stack.push((x, ix));
-                    self.push_lower((*x).c.ixm(ix), bound);
+                    self.push_lower(x.c.ixm(ix), bound);
                 }
             }
         }
@@ -161,7 +161,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 Tree::NL(x) => {
                     let ix = x.get_upper(bound);
                     self.stack.push((x, ix));
-                    self.push_upper((*x).c.ixm(ix), bound);
+                    self.push_upper(x.c.ixm(ix), bound);
                 }
             }
         }
@@ -176,7 +176,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 }
                 Tree::NL(x) => {
                     self.stack.push((x, 0));
-                    self.push((*x).c.ixm(0));
+                    self.push(x.c.ixm(0));
                 }
             }
         }
@@ -192,20 +192,24 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 Tree::NL(x) => {
                     let ix = x.v.len();
                     self.stack.push((x, ix));
-                    self.push_back((*x).c.ixm(0));
+                    self.push_back(x.c.ixm(ix));
                 }
             }
         }
     }
 
     /// ToDo
-    pub fn insert_after(&mut self, _key: K, _value: V) {
+    pub fn insert_after(&mut self, key: K, value: V)
+    where
+        K: Ord,
+    {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if (*leaf).full() {
-                panic!();
+                panic!(); // Need to split the leaf etc. Tricky, todo.
+            } else {
+                (*leaf).0.insert(self.index, (key, value));
             }
-            panic!();
         }
     }
 
@@ -224,7 +228,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                         ix += 1;
                         self.stack.push((nl, ix));
                         self.push((*nl).c.ixm(ix));
-                        return Some((&(*kv).0, &mut (*kv).1));
+                        return Some((&kv.0, &mut kv.1));
                     } else {
                         return None;
                     }
@@ -250,7 +254,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                             let kv = (*nl).v.ixm(ix);
                             self.stack.push((nl, ix));
                             self.push_back((*nl).c.ixm(ix));
-                            return Some((&(*kv).0, &mut (*kv).1));
+                            return Some((&kv.0, &mut kv.1));
                         }
                     } else {
                         return None;
