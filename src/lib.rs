@@ -211,20 +211,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == (*leaf).0.len() {
-                loop {
-                    if let Some((nl, mut ix)) = self.stack.pop() {
-                        if ix >= (*nl).v.len() {
-                            continue;
-                        }
+                while let Some((nl, mut ix)) = self.stack.pop() {
+                    if ix < (*nl).v.len() {
                         let kv = (*nl).v.ixm(ix);
                         ix += 1;
                         self.stack.push((nl, ix));
                         self.push((*nl).c.ixm(ix));
                         return Some((&kv.0, &mut kv.1));
-                    } else {
-                        return None;
                     }
                 }
+                return None;
             } else {
                 let kv = (*leaf).0.ixm(self.index);
                 self.index += 1;
@@ -237,22 +233,19 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     #[allow(clippy::should_implement_trait)]
     pub fn prev(&mut self) -> Option<(&K, &mut V)> {
         unsafe {
-            let leaf = self.leaf.unwrap_unchecked();
             if self.index == 0 {
-                loop {
-                    if let Some((nl, mut ix)) = self.stack.pop() {
-                        if ix > 0 {
-                            ix -= 1;
-                            let kv = (*nl).v.ixm(ix);
-                            self.stack.push((nl, ix));
-                            self.push_back((*nl).c.ixm(ix));
-                            return Some((&kv.0, &mut kv.1));
-                        }
-                    } else {
-                        return None;
+                while let Some((nl, mut ix)) = self.stack.pop() {
+                    if ix > 0 {
+                        ix -= 1;
+                        let kv = (*nl).v.ixm(ix);
+                        self.stack.push((nl, ix));
+                        self.push_back((*nl).c.ixm(ix));
+                        return Some((&kv.0, &mut kv.1));
                     }
                 }
+                return None;
             } else {
+                let leaf = self.leaf.unwrap_unchecked();
                 self.index -= 1;
                 let kv = (*leaf).0.ixm(self.index);
                 Some((&kv.0, &mut kv.1))
@@ -264,12 +257,11 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub fn peek_next(&self) -> Option<(&K, &mut V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
-
             if self.index == (*leaf).0.len() {
                 for (nl, ix) in self.stack.iter().rev() {
                     if *ix < (**nl).v.len() {
-                        let kv: *mut (K, V) = (**nl).v.ixm(*ix);
-                        return Some((&(*kv).0, &mut (*kv).1));
+                        let kv = (**nl).v.ixm(*ix);
+                        return Some((&kv.0, &mut kv.1));
                     }
                 }
                 None
@@ -282,16 +274,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     /// Returns references to the previous key/value pair.
     pub fn peek_prev(&self) -> Option<(&K, &mut V)> {
         unsafe {
-            let leaf = self.leaf.unwrap_unchecked();
             if self.index == 0 {
                 for (nl, ix) in self.stack.iter().rev() {
                     if *ix > 0 {
-                        let kv: *mut (K, V) = (**nl).v.ixm(*ix - 1);
-                        return Some((&(*kv).0, &mut (*kv).1));
+                        let kv = (**nl).v.ixm(*ix - 1);
+                        return Some((&kv.0, &mut kv.1));
                     }
                 }
                 None
             } else {
+                let leaf = self.leaf.unwrap_unchecked();
                 let kv = (*leaf).0.ixm(self.index - 1);
                 Some((&kv.0, &mut kv.1))
             }
