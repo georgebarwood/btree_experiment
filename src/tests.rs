@@ -1163,7 +1163,6 @@ fn from_array() {
     assert_eq!(map, unordered_duplicates);
 }
 
-/* ToDo : re-enable these tests once cursor is fully implemented.
 #[test]
 fn test_cursor() {
     let map = BTreeMap::from([(1, 'a'), (2, 'b'), (3, 'c')]);
@@ -1185,6 +1184,8 @@ fn test_cursor() {
     assert_eq!(cur.next(), Some((&1, &'a')));
     assert_eq!(cur.prev(), Some((&1, &'a')));
 }
+
+/* Disabled until implementation is done (ToDo)
 
 #[test]
 fn test_cursor_mut() {
