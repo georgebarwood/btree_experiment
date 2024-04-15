@@ -89,7 +89,7 @@ pub struct CursorMut<'a, K, V> {
     _map: *mut BTreeMap<K, V>,
     leaf: Option<*mut Leaf<K, V>>,
     index: usize,
-    stack: Vec<(*mut NonLeaf<K, V>, usize)>,
+    stack: ArrayVec<(*mut NonLeaf<K, V>, usize), 10>,
     _pd: PhantomData<&'a mut BTreeMap<K, V>>,
 }
 
@@ -99,7 +99,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
             _map: bt,
             leaf: None,
             index: 0,
-            stack: Vec::new(),
+            stack: ArrayVec::new(),
             _pd: PhantomData,
         }
     }
@@ -184,7 +184,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
             }
             Tree::NL(x) => {
                 let ix = x.v.len();
-                self.stack.push((x, ix));                
+                self.stack.push((x, ix));
                 let c = &mut x.c[ix];
                 self.push_back(c);
             }
@@ -196,7 +196,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub fn next(&mut self) -> Option<(&K, &mut V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == (*leaf).0.len() {
                         loop {
@@ -228,14 +228,14 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub fn prev(&mut self) -> Option<(&K, &mut V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == 0 {
                         loop {
                             if let Some((nl, mut ix)) = self.stack.pop() {
                                 if ix > 0 {
                                     ix -= 1;
-                                    let kv: *mut (K, V) = (*nl).v.ixm(ix);                                    
+                                    let kv: *mut (K, V) = (*nl).v.ixm(ix);
                                     let ct = (*nl).c.ixm(ix);
                                     self.stack.push((nl, ix));
                                     self.push_back(ct);
@@ -247,7 +247,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                         }
                     } else {
                         self.index -= 1;
-                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);                        
+                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
                         Some((&(*kv).0, &mut (*kv).1))
                     }
                 }
@@ -259,7 +259,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub fn peek_next(&self) -> Option<(&K, &mut V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == (*leaf).0.len() {
                         for (nl, ix) in self.stack.iter().rev() {
@@ -268,7 +268,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                                 return Some((&(*kv).0, &mut (*kv).1));
                             }
                         }
-                        return None;
+                        None
                     } else {
                         let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
                         Some((&(*kv).0, &mut (*kv).1))
@@ -281,7 +281,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub fn peek_prev(&self) -> Option<(&K, &mut V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == 0 {
                         for (nl, ix) in self.stack.iter().rev() {
@@ -290,7 +290,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                                 return Some((&(*kv).0, &mut (*kv).1));
                             }
                         }
-                        return None;
+                        None
                     } else {
                         let kv: *mut (K, V) = (*leaf).0.ixm(self.index - 1);
                         Some((&(*kv).0, &mut (*kv).1))
@@ -303,9 +303,9 @@ impl<'a, K, V> CursorMut<'a, K, V> {
 
 /// Cursor that doesn't allow mutation of underlying map.
 pub struct Cursor<'a, K, V> {
-    leaf: Option<*const Leaf<K, V>>,
+    leaf: Option<*const Leaf<K, V>>, // Maybe can use orderinary reference rather than pointer.
     index: usize,
-    stack: Vec<(*const NonLeaf<K, V>, usize)>,
+    stack: ArrayVec<(*const NonLeaf<K, V>, usize), 10>,
     _pd: PhantomData<&'a BTreeMap<K, V>>,
 }
 
@@ -314,7 +314,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
         Self {
             leaf: None,
             index: 0,
-            stack: Vec::new(),
+            stack: ArrayVec::new(),
             _pd: PhantomData,
         }
     }
@@ -399,7 +399,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
             }
             Tree::NL(x) => {
                 let ix = x.v.len();
-                self.stack.push((x, ix));                
+                self.stack.push((x, ix));
                 let c = &x.c[ix];
                 self.push_back(c);
             }
@@ -411,7 +411,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
     pub fn next(&mut self) -> Option<(&K, &V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == (*leaf).0.len() {
                         loop {
@@ -429,7 +429,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                             }
                         }
                     } else {
-                        let kv: *const(K, V) = (*leaf).0.ix(self.index);
+                        let kv: *const (K, V) = (*leaf).0.ix(self.index);
                         self.index += 1;
                         Some((&(*kv).0, &(*kv).1))
                     }
@@ -443,14 +443,14 @@ impl<'a, K, V> Cursor<'a, K, V> {
     pub fn prev(&mut self) -> Option<(&K, &V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == 0 {
                         loop {
                             if let Some((nl, mut ix)) = self.stack.pop() {
                                 if ix > 0 {
                                     ix -= 1;
-                                    let kv: *const (K, V) = (*nl).v.ix(ix);                                    
+                                    let kv: *const (K, V) = (*nl).v.ix(ix);
                                     let ct = (*nl).c.ix(ix);
                                     self.stack.push((nl, ix));
                                     self.push_back(ct);
@@ -462,7 +462,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                         }
                     } else {
                         self.index -= 1;
-                        let kv: *const (K, V) = (*leaf).0.ix(self.index);                        
+                        let kv: *const (K, V) = (*leaf).0.ix(self.index);
                         Some((&(*kv).0, &(*kv).1))
                     }
                 }
@@ -474,16 +474,16 @@ impl<'a, K, V> Cursor<'a, K, V> {
     pub fn peek_next(&self) -> Option<(&K, &V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == (*leaf).0.len() {
                         for (nl, ix) in self.stack.iter().rev() {
                             if *ix < (**nl).v.len() {
-                                let kv: *const(K, V) = (**nl).v.ix(*ix);
+                                let kv: *const (K, V) = (**nl).v.ix(*ix);
                                 return Some((&(*kv).0, &(*kv).1));
                             }
                         }
-                        return None;
+                        None
                     } else {
                         let kv: *const (K, V) = (*leaf).0.ix(self.index);
                         Some((&(*kv).0, &(*kv).1))
@@ -496,7 +496,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
     pub fn peek_prev(&self) -> Option<(&K, &V)> {
         unsafe {
             match self.leaf {
-                None => None,
+                None => unreachable!(),
                 Some(leaf) => {
                     if self.index == 0 {
                         for (nl, ix) in self.stack.iter().rev() {
@@ -505,7 +505,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                                 return Some((&(*kv).0, &(*kv).1));
                             }
                         }
-                        return None;
+                        None
                     } else {
                         let kv: *const (K, V) = (*leaf).0.ix(self.index - 1);
                         Some((&(*kv).0, &(*kv).1))
