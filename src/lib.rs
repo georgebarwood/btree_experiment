@@ -879,7 +879,7 @@ impl<K, V> BTreeMap<K, V> {
         IntoValues(self.into_iter())
     }
 
-    /// Get a mutable cursor positioned per the given bound.
+    /// Get a mutable cursor positioned just after bound.
     pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
     where
         K: Borrow<Q> + Ord,
@@ -888,7 +888,7 @@ impl<K, V> BTreeMap<K, V> {
         CursorMut::lower_bound(self, bound)
     }
 
-    /// Get a mutable cursor positioned per the given bound.
+    /// Get a mutable cursor positioned just before bound.
     pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
     where
         K: Borrow<Q> + Ord,
@@ -897,7 +897,7 @@ impl<K, V> BTreeMap<K, V> {
         CursorMut::upper_bound(self, bound)
     }
 
-    /// Get a mutable cursor positioned per the given bound.
+    /// Get cursor positioned just after bound.
     pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V>
     where
         K: Borrow<Q> + Ord,
@@ -906,7 +906,7 @@ impl<K, V> BTreeMap<K, V> {
         Cursor::lower_bound(self, bound)
     }
 
-    /// Get a mutable cursor positioned per the given bound.
+    /// Get cursor positioned just before bound.
     pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V>
     where
         K: Borrow<Q> + Ord,
