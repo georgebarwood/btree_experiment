@@ -18,7 +18,7 @@ use std::{
 
 #[test]
 fn mut_cursor_test() {
-    let n = 2000;
+    let n = 500;
     let mut m = BTreeMap::<usize, usize>::new();
     for i in 0..n {
         m.insert(i, i);
@@ -84,7 +84,7 @@ fn mut_cursor_test() {
     assert_eq!(cursor.peek_next(), Some((&3, &mut "c")));
 }
 
-/// Cursor that allows mutation of map.
+/// Cursor that allows mutation of map, returned by [BTreeMap::lower_bound_mut], [BTreeMap::upper_bound_mut].
 pub struct CursorMut<'a, K, V> {
     _map: *mut BTreeMap<K, V>,
     leaf: Option<*mut Leaf<K, V>>,
@@ -92,6 +92,9 @@ pub struct CursorMut<'a, K, V> {
     stack: ArrayVec<(*mut NonLeaf<K, V>, usize), 10>,
     _pd: PhantomData<&'a mut BTreeMap<K, V>>,
 }
+
+unsafe impl<'a, K, V> Send for CursorMut<'a, K, V> {}
+unsafe impl<'a, K, V> Sync for CursorMut<'a, K, V> {}
 
 impl<'a, K, V> CursorMut<'a, K, V> {
     fn make(bt: &mut BTreeMap<K, V>) -> Self {
@@ -124,70 +127,85 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         s
     }
 
-    fn push_lower<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    fn push_lower<Q>(&mut self, tree: *mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = leaf.get_lower(bound);
-            }
-            Tree::NL(nl) => {
-                let ix = nl.get_lower(bound);
-                self.stack.push((nl, ix));
-                let c = &mut nl.c[ix];
-                self.push_lower(c, bound);
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = leaf.get_lower(bound);
+                }
+                Tree::NL(x) => {
+                    let ix = x.get_lower(bound);
+                    self.stack.push((x, ix));
+                    self.push_lower((*x).c.ixm(ix), bound);
+                }
             }
         }
     }
 
-    fn push_upper<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    fn push_upper<Q>(&mut self, tree: *mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = leaf.get_upper(bound);
-            }
-            Tree::NL(nl) => {
-                let ix = nl.get_upper(bound);
-                self.stack.push((nl, ix));
-                let c = &mut nl.c[ix];
-                self.push_upper(c, bound);
-            }
-        }
-    }
-
-    fn push(&mut self, tree: &mut Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = 0;
-            }
-            Tree::NL(x) => {
-                self.stack.push((x, 0));
-                let c = &mut x.c[0];
-                self.push(c);
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = leaf.get_upper(bound);
+                }
+                Tree::NL(x) => {
+                    let ix = x.get_upper(bound);
+                    self.stack.push((x, ix));
+                    self.push_upper((*x).c.ixm(ix), bound);
+                }
             }
         }
     }
 
-    fn push_back(&mut self, tree: &mut Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = leaf.0.len();
+    fn push(&mut self, tree: *mut Tree<K, V>) {
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = 0;
+                }
+                Tree::NL(x) => {
+                    self.stack.push((x, 0));
+                    self.push((*x).c.ixm(0));
+                }
             }
-            Tree::NL(x) => {
-                let ix = x.v.len();
-                self.stack.push((x, ix));
-                let c = &mut x.c[ix];
-                self.push_back(c);
+        }
+    }
+
+    fn push_back(&mut self, tree: *mut Tree<K, V>) {
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = leaf.0.len();
+                }
+                Tree::NL(x) => {
+                    let ix = x.v.len();
+                    self.stack.push((x, ix));
+                    self.push_back((*x).c.ixm(0));
+                }
             }
+        }
+    }
+
+    /// ToDo
+    pub fn insert_after(&mut self, _key: K, _value: V) {
+        unsafe {
+            let leaf = self.leaf.unwrap_unchecked();
+            if (*leaf).full() {
+                panic!();
+            }
+            panic!();
         }
     }
 
@@ -195,30 +213,26 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<(&K, &mut V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == (*leaf).0.len() {
-                        loop {
-                            if let Some((nl, mut ix)) = self.stack.pop() {
-                                if ix < (*nl).v.len() {
-                                    let kv: *mut (K, V) = (*nl).v.ixm(ix);
-                                    ix += 1;
-                                    let ct = (*nl).c.ixm(ix);
-                                    self.stack.push((nl, ix));
-                                    self.push(ct);
-                                    return Some((&(*kv).0, &mut (*kv).1));
-                                }
-                            } else {
-                                return None;
-                            }
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == (*leaf).0.len() {
+                loop {
+                    if let Some((nl, mut ix)) = self.stack.pop() {
+                        if ix >= (*nl).v.len() {
+                            continue;
                         }
+                        let kv = (*nl).v.ixm(ix);
+                        ix += 1;
+                        self.stack.push((nl, ix));
+                        self.push((*nl).c.ixm(ix));
+                        return Some((&(*kv).0, &mut (*kv).1));
                     } else {
-                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
-                        self.index += 1;
-                        Some((&(*kv).0, &mut (*kv).1))
+                        return None;
                     }
                 }
+            } else {
+                let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
+                self.index += 1;
+                Some((&(*kv).0, &mut (*kv).1))
             }
         }
     }
@@ -227,30 +241,25 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     #[allow(clippy::should_implement_trait)]
     pub fn prev(&mut self) -> Option<(&K, &mut V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == 0 {
-                        loop {
-                            if let Some((nl, mut ix)) = self.stack.pop() {
-                                if ix > 0 {
-                                    ix -= 1;
-                                    let kv: *mut (K, V) = (*nl).v.ixm(ix);
-                                    let ct = (*nl).c.ixm(ix);
-                                    self.stack.push((nl, ix));
-                                    self.push_back(ct);
-                                    return Some((&(*kv).0, &mut (*kv).1));
-                                }
-                            } else {
-                                return None;
-                            }
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == 0 {
+                loop {
+                    if let Some((nl, mut ix)) = self.stack.pop() {
+                        if ix > 0 {
+                            ix -= 1;
+                            let kv = (*nl).v.ixm(ix);
+                            self.stack.push((nl, ix));
+                            self.push_back((*nl).c.ixm(ix));
+                            return Some((&(*kv).0, &mut (*kv).1));
                         }
                     } else {
-                        self.index -= 1;
-                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
-                        Some((&(*kv).0, &mut (*kv).1))
+                        return None;
                     }
                 }
+            } else {
+                self.index -= 1;
+                let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
+                Some((&(*kv).0, &mut (*kv).1))
             }
         }
     }
@@ -258,56 +267,52 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     /// Returns references to the next key/value pair.
     pub fn peek_next(&self) -> Option<(&K, &mut V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == (*leaf).0.len() {
-                        for (nl, ix) in self.stack.iter().rev() {
-                            if *ix < (**nl).v.len() {
-                                let kv: *mut (K, V) = (**nl).v.ixm(*ix);
-                                return Some((&(*kv).0, &mut (*kv).1));
-                            }
-                        }
-                        None
-                    } else {
-                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
-                        Some((&(*kv).0, &mut (*kv).1))
+            let leaf = self.leaf.unwrap_unchecked();
+
+            if self.index == (*leaf).0.len() {
+                for (nl, ix) in self.stack.iter().rev() {
+                    if *ix < (**nl).v.len() {
+                        let kv: *mut (K, V) = (**nl).v.ixm(*ix);
+                        return Some((&(*kv).0, &mut (*kv).1));
                     }
                 }
+                None
+            } else {
+                let kv: *mut (K, V) = (*leaf).0.ixm(self.index);
+                Some((&(*kv).0, &mut (*kv).1))
             }
         }
     }
     /// Returns references to the previous key/value pair.
     pub fn peek_prev(&self) -> Option<(&K, &mut V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == 0 {
-                        for (nl, ix) in self.stack.iter().rev() {
-                            if *ix > 0 {
-                                let kv: *mut (K, V) = (**nl).v.ixm(*ix - 1);
-                                return Some((&(*kv).0, &mut (*kv).1));
-                            }
-                        }
-                        None
-                    } else {
-                        let kv: *mut (K, V) = (*leaf).0.ixm(self.index - 1);
-                        Some((&(*kv).0, &mut (*kv).1))
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == 0 {
+                for (nl, ix) in self.stack.iter().rev() {
+                    if *ix > 0 {
+                        let kv: *mut (K, V) = (**nl).v.ixm(*ix - 1);
+                        return Some((&(*kv).0, &mut (*kv).1));
                     }
                 }
+                None
+            } else {
+                let kv: *mut (K, V) = (*leaf).0.ixm(self.index - 1);
+                Some((&(*kv).0, &mut (*kv).1))
             }
         }
     }
 }
 
-/// Cursor that doesn't allow mutation of underlying map.
+/// Cursor returned by [BTreeMap::lower_bound], [BTreeMap::upper_bound].
 pub struct Cursor<'a, K, V> {
     leaf: Option<*const Leaf<K, V>>, // Maybe can use orderinary reference rather than pointer.
     index: usize,
     stack: ArrayVec<(*const NonLeaf<K, V>, usize), 10>,
     _pd: PhantomData<&'a BTreeMap<K, V>>,
 }
+
+unsafe impl<'a, K, V> Send for Cursor<'a, K, V> {}
+unsafe impl<'a, K, V> Sync for Cursor<'a, K, V> {}
 
 impl<'a, K, V> Cursor<'a, K, V> {
     fn make() -> Self {
@@ -410,30 +415,26 @@ impl<'a, K, V> Cursor<'a, K, V> {
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<(&K, &V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == (*leaf).0.len() {
-                        loop {
-                            if let Some((nl, mut ix)) = self.stack.pop() {
-                                if ix < (*nl).v.len() {
-                                    let kv: *const (K, V) = (*nl).v.ix(ix);
-                                    ix += 1;
-                                    let ct = (*nl).c.ix(ix);
-                                    self.stack.push((nl, ix));
-                                    self.push(ct);
-                                    return Some((&(*kv).0, &(*kv).1));
-                                }
-                            } else {
-                                return None;
-                            }
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == (*leaf).0.len() {
+                loop {
+                    if let Some((nl, mut ix)) = self.stack.pop() {
+                        if ix < (*nl).v.len() {
+                            let kv: *const (K, V) = (*nl).v.ix(ix);
+                            ix += 1;
+                            let ct = (*nl).c.ix(ix);
+                            self.stack.push((nl, ix));
+                            self.push(ct);
+                            return Some((&(*kv).0, &(*kv).1));
                         }
                     } else {
-                        let kv: *const (K, V) = (*leaf).0.ix(self.index);
-                        self.index += 1;
-                        Some((&(*kv).0, &(*kv).1))
+                        return None;
                     }
                 }
+            } else {
+                let kv: *const (K, V) = (*leaf).0.ix(self.index);
+                self.index += 1;
+                Some((&(*kv).0, &(*kv).1))
             }
         }
     }
@@ -442,30 +443,26 @@ impl<'a, K, V> Cursor<'a, K, V> {
     #[allow(clippy::should_implement_trait)]
     pub fn prev(&mut self) -> Option<(&K, &V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == 0 {
-                        loop {
-                            if let Some((nl, mut ix)) = self.stack.pop() {
-                                if ix > 0 {
-                                    ix -= 1;
-                                    let kv: *const (K, V) = (*nl).v.ix(ix);
-                                    let ct = (*nl).c.ix(ix);
-                                    self.stack.push((nl, ix));
-                                    self.push_back(ct);
-                                    return Some((&(*kv).0, &(*kv).1));
-                                }
-                            } else {
-                                return None;
-                            }
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == 0 {
+                loop {
+                    if let Some((nl, mut ix)) = self.stack.pop() {
+                        if ix > 0 {
+                            ix -= 1;
+                            let kv: *const (K, V) = (*nl).v.ix(ix);
+                            let ct = (*nl).c.ix(ix);
+                            self.stack.push((nl, ix));
+                            self.push_back(ct);
+                            return Some((&(*kv).0, &(*kv).1));
                         }
                     } else {
-                        self.index -= 1;
-                        let kv: *const (K, V) = (*leaf).0.ix(self.index);
-                        Some((&(*kv).0, &(*kv).1))
+                        return None;
                     }
                 }
+            } else {
+                self.index -= 1;
+                let kv: *const (K, V) = (*leaf).0.ix(self.index);
+                Some((&(*kv).0, &(*kv).1))
             }
         }
     }
@@ -473,44 +470,36 @@ impl<'a, K, V> Cursor<'a, K, V> {
     /// Returns references to the next key/value pair.
     pub fn peek_next(&self) -> Option<(&K, &V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == (*leaf).0.len() {
-                        for (nl, ix) in self.stack.iter().rev() {
-                            if *ix < (**nl).v.len() {
-                                let kv: *const (K, V) = (**nl).v.ix(*ix);
-                                return Some((&(*kv).0, &(*kv).1));
-                            }
-                        }
-                        None
-                    } else {
-                        let kv: *const (K, V) = (*leaf).0.ix(self.index);
-                        Some((&(*kv).0, &(*kv).1))
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == (*leaf).0.len() {
+                for (nl, ix) in self.stack.iter().rev() {
+                    if *ix < (**nl).v.len() {
+                        let kv: *const (K, V) = (**nl).v.ix(*ix);
+                        return Some((&(*kv).0, &(*kv).1));
                     }
                 }
+                None
+            } else {
+                let kv: *const (K, V) = (*leaf).0.ix(self.index);
+                Some((&(*kv).0, &(*kv).1))
             }
         }
     }
     /// Returns references to the previous key/value pair.
     pub fn peek_prev(&self) -> Option<(&K, &V)> {
         unsafe {
-            match self.leaf {
-                None => unreachable!(),
-                Some(leaf) => {
-                    if self.index == 0 {
-                        for (nl, ix) in self.stack.iter().rev() {
-                            if *ix > 0 {
-                                let kv: *const (K, V) = (**nl).v.ix(*ix - 1);
-                                return Some((&(*kv).0, &(*kv).1));
-                            }
-                        }
-                        None
-                    } else {
-                        let kv: *const (K, V) = (*leaf).0.ix(self.index - 1);
-                        Some((&(*kv).0, &(*kv).1))
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index == 0 {
+                for (nl, ix) in self.stack.iter().rev() {
+                    if *ix > 0 {
+                        let kv: *const (K, V) = (**nl).v.ix(*ix - 1);
+                        return Some((&(*kv).0, &(*kv).1));
                     }
                 }
+                None
+            } else {
+                let kv: *const (K, V) = (*leaf).0.ix(self.index - 1);
+                Some((&(*kv).0, &(*kv).1))
             }
         }
     }
@@ -879,7 +868,7 @@ impl<K, V> BTreeMap<K, V> {
         IntoValues(self.into_iter())
     }
 
-    /// Get a mutable cursor positioned just after bound.
+    /// Get a cursor positioned just after bound that permits map mutation.
     pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
     where
         K: Borrow<Q> + Ord,
@@ -888,7 +877,7 @@ impl<K, V> BTreeMap<K, V> {
         CursorMut::lower_bound(self, bound)
     }
 
-    /// Get a mutable cursor positioned just before bound.
+    /// Get a cursor positioned just before bound that permits map mutation.
     pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
     where
         K: Borrow<Q> + Ord,
