@@ -17,6 +17,21 @@ use std::{
 };
 
 #[test]
+fn cursor_insert_test() {
+    let n = 200;
+    let mut m = BTreeMap::<usize, usize>::new();
+    let mut c = m.lower_bound_mut(Bound::Unbounded);
+    for i in 0..n {
+        c.insert_before(i, i);
+        c.next();
+    }
+    for i in 0..n {
+        let v = m.get(&i).unwrap();
+        assert_eq!(*v, i);
+    }
+}
+
+#[test]
 fn mut_cursor_test() {
     let n = 200;
     let mut m = BTreeMap::<usize, usize>::new();
@@ -86,7 +101,7 @@ fn mut_cursor_test() {
 
 /// Cursor that allows mutation of map, returned by [BTreeMap::lower_bound_mut], [BTreeMap::upper_bound_mut].
 pub struct CursorMut<'a, K, V> {
-    _map: *mut BTreeMap<K, V>,
+    map: *mut BTreeMap<K, V>,
     leaf: Option<*mut Leaf<K, V>>,
     index: usize,
     stack: ArrayVec<(*mut NonLeaf<K, V>, usize), 10>,
@@ -97,9 +112,9 @@ unsafe impl<'a, K, V> Send for CursorMut<'a, K, V> {}
 unsafe impl<'a, K, V> Sync for CursorMut<'a, K, V> {}
 
 impl<'a, K, V> CursorMut<'a, K, V> {
-    fn make(bt: &mut BTreeMap<K, V>) -> Self {
+    fn make(map: *mut BTreeMap<K, V>) -> Self {
         Self {
-            _map: bt,
+            map,
             leaf: None,
             index: 0,
             stack: ArrayVec::new(),
@@ -107,100 +122,138 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         }
     }
 
-    fn lower_bound<Q>(bt: &mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    fn lower_bound<Q>(map: &mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut s = Self::make(bt);
-        s.push_lower(&mut bt.tree, bound);
-        s
+        unsafe {
+            let map: *mut BTreeMap<K, V> = map;
+            let mut s = Self::make(map);
+            let t: *mut Tree<K, V> = &mut (*map).tree;
+            s.push_lower(t, bound);
+            s
+        }
     }
 
-    fn upper_bound<Q>(bt: &mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    fn upper_bound<Q>(map: &mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut s = Self::make(bt);
-        s.push_upper(&mut bt.tree, bound);
-        s
+        unsafe {
+            let map: *mut BTreeMap<K, V> = map;
+            let mut s = Self::make(map);
+            let t: *mut Tree<K, V> = &mut (*map).tree;
+            s.push_upper(t, bound);
+            s
+        }
     }
 
-    fn push_lower<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    fn push_lower<Q>(&mut self, tree: *mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = leaf.get_lower(bound);
-                self.leaf = Some(leaf);
-            }
-            Tree::NL(x) => {
-                let ix = x.get_lower(bound);
-                self.stack.push((x, ix));
-                self.push_lower(x.c.ixm(ix), bound);
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.index = leaf.get_lower(bound);
+                    self.leaf = Some(leaf);
+                }
+                Tree::NL(x) => {
+                    let ix = x.get_lower(bound);
+                    self.stack.push((x, ix));
+                    self.push_lower(x.c.ixm(ix), bound);
+                }
             }
         }
     }
 
-    fn push_upper<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    fn push_upper<Q>(&mut self, tree: *mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = leaf.get_upper(bound);
-                self.leaf = Some(leaf);
-            }
-            Tree::NL(x) => {
-                let ix = x.get_upper(bound);
-                self.stack.push((x, ix));
-                self.push_upper(x.c.ixm(ix), bound);
-            }
-        }
-    }
-
-    fn push(&mut self, tree: &mut Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = 0;
-                self.leaf = Some(leaf);
-            }
-            Tree::NL(x) => {
-                self.stack.push((x, 0));
-                self.push(x.c.ixm(0));
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.index = leaf.get_upper(bound);
+                    self.leaf = Some(leaf);
+                }
+                Tree::NL(x) => {
+                    let ix = x.get_upper(bound);
+                    self.stack.push((x, ix));
+                    self.push_upper(x.c.ixm(ix), bound);
+                }
             }
         }
     }
 
-    fn push_back(&mut self, tree: &mut Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = leaf.0.len();
-                self.leaf = Some(leaf);
+    fn push(&mut self, tree: *mut Tree<K, V>) {
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.index = 0;
+                    self.leaf = Some(leaf);
+                }
+                Tree::NL(x) => {
+                    self.stack.push((x, 0));
+                    self.push(x.c.ixm(0));
+                }
             }
-            Tree::NL(x) => {
-                let ix = x.v.len();
-                self.stack.push((x, ix));
-                self.push_back(x.c.ixm(ix));
+        }
+    }
+
+    fn push_back(&mut self, tree: *mut Tree<K, V>) {
+        unsafe {
+            match &mut *tree {
+                Tree::L(leaf) => {
+                    self.index = leaf.0.len();
+                    self.leaf = Some(leaf);
+                }
+                Tree::NL(x) => {
+                    let ix = x.v.len();
+                    self.stack.push((x, ix));
+                    self.push_back(x.c.ixm(ix));
+                }
             }
         }
     }
 
     /// ToDo
-    pub fn insert_after(&mut self, key: K, value: V)
+    pub fn insert_before(&mut self, key: K, value: V)
     where
         K: Ord,
     {
         unsafe {
-            let leaf = self.leaf.unwrap_unchecked();
+            (*self.map).len += 1;
+            let mut leaf = self.leaf.unwrap_unchecked();
             if (*leaf).full() {
-                panic!(); // Need to split the leaf etc. Tricky, todo.
+                let (med, right) = (*leaf).split();
+                let right = Tree::L(Leaf(right));
+                self.leaf = None;
+                let (oldleaf, newleaf) = self.split(med, right);
+                if self.index >= LEAF_SPLIT {
+                    self.index -= LEAF_SPLIT;
+                    self.leaf = Some((*newleaf).leaf());
+                } else {
+                    self.leaf = Some((*oldleaf).leaf());
+                }
+                leaf = self.leaf.unwrap_unchecked();
+            }
+            (*leaf).0.insert(self.index, (key, value));
+        }
+    }
+
+    fn split(&mut self, _med: (K, V), _tree: Tree<K, V>) -> (*mut Tree<K, V>, *mut Tree<K, V>) {
+        unsafe {
+            if self.stack.len() == 0 {
+                (*self.map).tree.new_root((_med, _tree));
+                let nl = (*self.map).tree.nl();
+                return (nl.c.ixm(0), nl.c.ixm(1));
             } else {
-                (*leaf).0.insert(self.index, (key, value));
+                panic!()
             }
         }
     }
@@ -1451,6 +1504,20 @@ impl<K, V> Tree<K, V> {
         c.push(left);
         c.push(right);
         *self = Tree::NL(NonLeaf { v, c });
+    }
+
+    fn nl(&mut self) -> &mut NonLeaf<K, V> {
+        match self {
+            Tree::NL(nl) => nl,
+            _ => panic!(),
+        }
+    }
+
+    fn leaf(&mut self) -> &mut Leaf<K, V> {
+        match self {
+            Tree::L(leaf) => leaf,
+            _ => panic!(),
+        }
     }
 
     fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
