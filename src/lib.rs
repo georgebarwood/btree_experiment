@@ -243,8 +243,8 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 let right = Tree::L(Leaf(right));
                 let r = if self.index >= LEAF_SPLIT { 1 } else { 0 };
                 self.index -= r * LEAF_SPLIT;
-                let t = self.split(med, right, r);
-                leaf = (*t).leaf();
+                let lt = self.split(med, right, r);
+                leaf = (*lt).leaf();
                 self.leaf = Some(leaf);
             }
             (*leaf).0.insert(self.index, (key, value));
@@ -257,9 +257,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 if (*nl).full() {
                     let (pmed, ptree) = (*nl).split();
                     let r = if ix >= NON_LEAF_SPLIT { 1 } else { 0 };
-                    if r != 0 {
-                        ix -= NON_LEAF_SPLIT;
-                    }
+                    ix -= r * NON_LEAF_SPLIT;
                     let pt = self.split(pmed, ptree, r);
                     nl = (*pt).nonleaf();
                 }
