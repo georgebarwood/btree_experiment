@@ -18,14 +18,13 @@ use std::{
 
 #[test]
 fn cursor_insert_test() {
-    let n = 200;
+    let n = 1000;
     let mut m = BTreeMap::<usize, usize>::new();
     let mut c = m.lower_bound_mut(Bound::Unbounded);
     for i in 0..n {
-        c.insert_before(i, i);
-        c.next();
+        c.insert_after(i, i);
     }
-    println!("map ={:?}", m);
+    // println!("map ={:?}", m);
     for i in 0..n {
         let v = m.get(&i).unwrap();
         assert_eq!(*v, i);
@@ -222,7 +221,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         }
     }
 
-    /// ToDo
+    /// Insert at cursor, leaving cursor after newly inserted element.
+    pub fn insert_after(&mut self, key: K, value: V)
+    where
+        K: Ord,
+    {
+        self.insert_before(key, value);
+        self.next();
+    }
+
+    /// Insert at cursor, leaving cursor before newly inserted element.
     pub fn insert_before(&mut self, key: K, value: V)
     where
         K: Ord,
@@ -233,14 +241,11 @@ impl<'a, K, V> CursorMut<'a, K, V> {
             if (*leaf).full() {
                 let (med, right) = (*leaf).split();
                 let right = Tree::L(Leaf(right));
-                // self.leaf = None;
-                let r: usize = if self.index >= LEAF_SPLIT { 1 } else { 0 };
+                let r = if self.index >= LEAF_SPLIT { 1 } else { 0 };
+                self.index -= r * LEAF_SPLIT;
                 let t = self.split(med, right, r);
-                self.leaf = Some((*t).leaf());
-                if r == 1 {
-                    self.index -= LEAF_SPLIT;
-                }
-                leaf = self.leaf.unwrap_unchecked();
+                leaf = (*t).leaf();
+                self.leaf = Some(leaf);
             }
             (*leaf).0.insert(self.index, (key, value));
         }
@@ -248,20 +253,26 @@ impl<'a, K, V> CursorMut<'a, K, V> {
 
     fn split(&mut self, med: (K, V), tree: Tree<K, V>, r: usize) -> *mut Tree<K, V> {
         unsafe {
-            if let Some((nl, mut ix)) = self.stack.pop() {
+            if let Some((mut nl, mut ix)) = self.stack.pop() {
                 if (*nl).full() {
-                    todo!();
+                    let (pmed, ptree) = (*nl).split();
+                    let r = if ix >= NON_LEAF_SPLIT { 1 } else { 0 };
+                    if r != 0 {
+                        ix -= NON_LEAF_SPLIT;
+                    }
+                    let pt = self.split(pmed, ptree, r);
+                    nl = (*pt).nonleaf();
                 }
                 (*nl).v.insert(ix, med);
                 (*nl).c.insert(ix + 1, tree);
                 ix += r;
                 self.stack.push((nl, ix));
-                return (*nl).c.ixm(ix);
+                (*nl).c.ixm(ix)
             } else {
                 (*self.map).tree.new_root((med, tree));
-                let nl = (*self.map).tree.nl();
+                let nl = (*self.map).tree.nonleaf();
                 self.stack.push((nl, r));
-                return nl.c.ixm(r);
+                nl.c.ixm(r)
             }
         }
     }
@@ -281,7 +292,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                         return Some((&kv.0, &mut kv.1));
                     }
                 }
-                return None;
+                None
             } else {
                 let kv = (*leaf).0.ixm(self.index);
                 self.index += 1;
@@ -304,7 +315,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                         return Some((&kv.0, &mut kv.1));
                     }
                 }
-                return None;
+                None
             } else {
                 let leaf = self.leaf.unwrap_unchecked();
                 self.index -= 1;
@@ -570,9 +581,9 @@ type StkVec<'a, K, V> = ArrayVec<Stk<'a, K, V>, 10>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-const LEAF_SPLIT: usize = 20;
+const LEAF_SPLIT: usize = 5; // 20;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
-const NON_LEAF_SPLIT: usize = 30;
+const NON_LEAF_SPLIT: usize = 5; // 30;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
 const CHILD_FULL: usize = NON_LEAF_FULL + 1;
 
@@ -1514,7 +1525,7 @@ impl<K, V> Tree<K, V> {
         *self = Tree::NL(NonLeaf { v, c });
     }
 
-    fn nl(&mut self) -> &mut NonLeaf<K, V> {
+    fn nonleaf(&mut self) -> &mut NonLeaf<K, V> {
         match self {
             Tree::NL(nl) => nl,
             _ => panic!(),
@@ -1700,7 +1711,7 @@ impl<K, V> Tree<K, V> {
 struct Leaf<K, V>(LeafVec<K, V>);
 impl<K, V> Leaf<K, V> {
     fn full(&self) -> bool {
-        self.0.len() >= LEAF_FULL
+        self.0.len() == LEAF_FULL
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
