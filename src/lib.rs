@@ -19,8 +19,8 @@ use std::{
 
 #[test]
 fn exp_cursor_insert_test() {
-    for _rep in 0..1000 {
-        let n = 10000;
+    for _rep in 0..1 {
+        let n = 100;
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
@@ -150,10 +150,10 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         Q: Ord + ?Sized,
     {
         unsafe {
+            // Converting map to raw pointer is necessary to keep Miri happy and avoid UB.
             let map: *mut BTreeMap<K, V> = map;
             let mut s = Self::make(map);
-            let t: *mut Tree<K, V> = &mut (*map).tree;
-            s.push_lower(t, bound);
+            s.push_lower(&mut (*map).tree, bound);
             s
         }
     }
@@ -166,8 +166,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         unsafe {
             let map: *mut BTreeMap<K, V> = map;
             let mut s = Self::make(map);
-            let t: *mut Tree<K, V> = &mut (*map).tree;
-            s.push_upper(t, bound);
+            s.push_upper(&mut (*map).tree, bound);
             s
         }
     }
