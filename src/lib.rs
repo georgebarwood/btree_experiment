@@ -246,23 +246,22 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         }
     }
 
-    fn split(&mut self, _med: (K, V), _tree: Tree<K, V>, r: usize) -> *mut Tree<K, V> {
+    fn split(&mut self, med: (K, V), tree: Tree<K, V>, r: usize) -> *mut Tree<K, V> {
         unsafe {
-            if self.stack.len() == 0 {
-                (*self.map).tree.new_root((_med, _tree));
-                let nl = (*self.map).tree.nl();
-                self.stack.insert(0, (nl, r));
-                return nl.c.ixm(r);
-            } else {
-                let (nl, mut ix) = self.stack.pop().unwrap();
+            if let Some((nl, mut ix)) = self.stack.pop() {
                 if (*nl).full() {
-                    panic!();
+                    todo!();
                 }
-                (*nl).v.insert(ix, _med);
-                (*nl).c.insert(ix + 1, _tree);
+                (*nl).v.insert(ix, med);
+                (*nl).c.insert(ix + 1, tree);
                 ix += r;
                 self.stack.push((nl, ix));
                 return (*nl).c.ixm(ix);
+            } else {
+                (*self.map).tree.new_root((med, tree));
+                let nl = (*self.map).tree.nl();
+                self.stack.push((nl, r));
+                return nl.c.ixm(r);
             }
         }
     }
