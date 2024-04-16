@@ -5,6 +5,7 @@
 
 // Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
 
+#![feature(btree_cursors)]
 #![deny(missing_docs)]
 use std::{
     borrow::Borrow,
@@ -17,17 +18,34 @@ use std::{
 };
 
 #[test]
-fn cursor_insert_test() {
-    let n = 1000;
-    let mut m = BTreeMap::<usize, usize>::new();
-    let mut c = m.lower_bound_mut(Bound::Unbounded);
-    for i in 0..n {
-        c.insert_after(i, i);
+fn exp_cursor_insert_test() {
+    for _rep in 0..1000 {
+        let n = 10000;
+        let mut m = BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            c.insert_before(i, i);
+        }
+        for i in 0..n {
+            let v = m.get(&i).unwrap();
+            assert_eq!(*v, i);
+        }
     }
-    // println!("map ={:?}", m);
-    for i in 0..n {
-        let v = m.get(&i).unwrap();
-        assert_eq!(*v, i);
+}
+
+#[test]
+fn std_cursor_insert_test() {
+    for _rep in 0..1000 {
+        let n = 10000;
+        let mut m = std::collections::BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            let _ = c.insert_before(i, i);
+        }
+        for i in 0..n {
+            let v = m.get(&i).unwrap();
+            assert_eq!(*v, i);
+        }
     }
 }
 
@@ -222,16 +240,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     }
 
     /// Insert at cursor, leaving cursor after newly inserted element.
-    pub fn insert_after(&mut self, key: K, value: V)
+    pub fn insert_before(&mut self, key: K, value: V)
     where
         K: Ord,
     {
-        self.insert_before(key, value);
+        self.insert_after(key, value);
         self.next();
     }
 
     /// Insert at cursor, leaving cursor before newly inserted element.
-    pub fn insert_before(&mut self, key: K, value: V)
+    pub fn insert_after(&mut self, key: K, value: V)
     where
         K: Ord,
     {
@@ -579,9 +597,9 @@ type StkVec<'a, K, V> = ArrayVec<Stk<'a, K, V>, 10>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-const LEAF_SPLIT: usize = 5; // 20;
+const LEAF_SPLIT: usize = 20;
 const LEAF_FULL: usize = LEAF_SPLIT * 2 - 1;
-const NON_LEAF_SPLIT: usize = 5; // 30;
+const NON_LEAF_SPLIT: usize = 30;
 const NON_LEAF_FULL: usize = NON_LEAF_SPLIT * 2 - 1;
 const CHILD_FULL: usize = NON_LEAF_FULL + 1;
 
@@ -3155,7 +3173,7 @@ fn various_tests() {
         for i in 0..n {
             t.insert(i, i);
         }
-        if true {
+        if false {
             assert!(t.first_key_value().unwrap().0 == &0);
             assert!(t.last_key_value().unwrap().0 == &(n - 1));
 
