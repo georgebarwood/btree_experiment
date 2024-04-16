@@ -25,6 +25,7 @@ fn cursor_insert_test() {
         c.insert_before(i, i);
         c.next();
     }
+    println!("map ={:?}", m);
     for i in 0..n {
         let v = m.get(&i).unwrap();
         assert_eq!(*v, i);
@@ -232,13 +233,12 @@ impl<'a, K, V> CursorMut<'a, K, V> {
             if (*leaf).full() {
                 let (med, right) = (*leaf).split();
                 let right = Tree::L(Leaf(right));
-                self.leaf = None;
-                let (oldleaf, newleaf) = self.split(med, right);
-                if self.index >= LEAF_SPLIT {
+                // self.leaf = None;
+                let r: usize = if self.index >= LEAF_SPLIT { 1 } else { 0 };
+                let t = self.split(med, right, r);
+                self.leaf = Some((*t).leaf());
+                if r == 1 {
                     self.index -= LEAF_SPLIT;
-                    self.leaf = Some((*newleaf).leaf());
-                } else {
-                    self.leaf = Some((*oldleaf).leaf());
                 }
                 leaf = self.leaf.unwrap_unchecked();
             }
@@ -246,14 +246,23 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         }
     }
 
-    fn split(&mut self, _med: (K, V), _tree: Tree<K, V>) -> (*mut Tree<K, V>, *mut Tree<K, V>) {
+    fn split(&mut self, _med: (K, V), _tree: Tree<K, V>, r: usize) -> *mut Tree<K, V> {
         unsafe {
             if self.stack.len() == 0 {
                 (*self.map).tree.new_root((_med, _tree));
                 let nl = (*self.map).tree.nl();
-                return (nl.c.ixm(0), nl.c.ixm(1));
+                self.stack.insert(0, (nl, r));
+                return nl.c.ixm(r);
             } else {
-                panic!()
+                let (nl, mut ix) = self.stack.pop().unwrap();
+                if (*nl).full() {
+                    panic!();
+                }
+                (*nl).v.insert(ix, _med);
+                (*nl).c.insert(ix + 1, _tree);
+                ix += r;
+                self.stack.push((nl, ix));
+                return (*nl).c.ixm(ix);
             }
         }
     }
