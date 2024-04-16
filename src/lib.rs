@@ -21,14 +21,15 @@ use std::{
 fn exp_cursor_insert_test() {
     for _rep in 0..1000 {
         let n = 10000;
-        let mut m = BTreeMap::<usize, usize>::new();
+        let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
             c.insert_before(i, i);
         }
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
-            let v = m.get(&i).unwrap();
-            assert_eq!(*v, i);
+            let (k, v) = c.next().unwrap();
+            assert_eq!((*k, *v), (i, i));
         }
     }
 }
@@ -40,11 +41,14 @@ fn std_cursor_insert_test() {
         let mut m = std::collections::BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
-            let _ = c.insert_before(i, i);
+            unsafe {
+                c.insert_before_unchecked(i, i);
+            }
         }
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
-            let v = m.get(&i).unwrap();
-            assert_eq!(*v, i);
+            let (k, v) = c.next().unwrap();
+            assert_eq!((*k, *v), (i, i));
         }
     }
 }
@@ -239,16 +243,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         }
     }
 
-    /// Insert at cursor, leaving cursor after newly inserted element.
+    /// Insert leaving cursor after newly inserted element.
     pub fn insert_before(&mut self, key: K, value: V)
     where
         K: Ord,
     {
         self.insert_after(key, value);
-        self.next();
+        self.index += 1;
     }
 
-    /// Insert at cursor, leaving cursor before newly inserted element.
+    /// Insert leaving cursor before newly inserted element.
     pub fn insert_after(&mut self, key: K, value: V)
     where
         K: Ord,
@@ -289,6 +293,41 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                 let nl = (*self.map).tree.nonleaf();
                 self.stack.push((nl, r));
                 nl.c.ixm(r)
+            }
+        }
+    }
+
+    /// Remove previous element.
+    pub fn remove_prev(&mut self) -> Option<(K, V)> {
+        self.prev()?;
+        self.remove_next()
+    }
+
+    /// Remove next element.
+    pub fn remove_next(&mut self) -> Option<(K, V)> {
+        unsafe {
+            let leaf = self.leaf.unwrap_unchecked();
+            let leaf_len = (*leaf).0.len();
+            if self.index == leaf_len {
+                while let Some((nl, mut ix)) = self.stack.pop() {
+                    if ix < (*nl).v.len() {
+                        return Some(if leaf_len == 0 {
+                            let kv = (*nl).v.remove(ix);
+                            (*nl).c.remove(ix);
+                            self.push((*nl).c.ixm(ix));
+                            kv
+                        } else {
+                            let rep = (*leaf).0.pop().unwrap();
+                            let kv = std::mem::replace((*nl).v.ixm(ix), rep);
+                            ix += 1;
+                            self.push((*nl).c.ixm(ix));
+                            kv
+                        });
+                    }
+                }
+                None
+            } else {
+                Some((*leaf).0.remove(self.index))
             }
         }
     }
@@ -874,7 +913,7 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Borrow<Q> + Ord,
     {
-        // This could be implemented more efficiently.
+        /*
         let mut map = Self::new();
         while let Some((k, v)) = self.pop_last() {
             if k.borrow() < key {
@@ -882,6 +921,15 @@ impl<K, V> BTreeMap<K, V> {
                 break;
             }
             map.insert(k, v);
+        }
+        map
+        */
+
+        let mut map = Self::new();
+        let mut from = self.lower_bound_mut(Bound::Included(key));
+        let mut to = map.lower_bound_mut(Bound::Unbounded);
+        while let Some((k, v)) = from.remove_next() {
+            to.insert_before(k, v);
         }
         map
     }

@@ -1185,8 +1185,7 @@ fn test_cursor() {
     assert_eq!(cur.prev(), Some((&1, &'a')));
 }
 
-/* Disabled until implementation is done (ToDo)
-
+/*
 #[test]
 fn test_cursor_mut() {
     let mut map = BTreeMap::from([(1, 'a'), (3, 'c'), (5, 'e')]);
