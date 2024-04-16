@@ -296,18 +296,17 @@ impl<'a, K, V> CursorMut<'a, K, V> {
             if self.index == leaf_len {
                 while let Some((nl, mut ix)) = self.stack.pop() {
                     if ix < (*nl).v.len() {
-                        return Some(if leaf_len == 0 {
-                            let kv = (*nl).v.remove(ix);
+                        let kv;
+                        if leaf_len == 0 {
+                            kv = (*nl).v.remove(ix);
                             (*nl).c.remove(ix);
-                            self.push((*nl).c.ixm(ix));
-                            kv
                         } else {
                             let rep = (*leaf).0.pop().unwrap();
-                            let kv = std::mem::replace((*nl).v.ixm(ix), rep);
+                            kv = std::mem::replace((*nl).v.ixm(ix), rep);
                             ix += 1;
-                            self.push((*nl).c.ixm(ix));
-                            kv
-                        });
+                        }
+                        self.push((*nl).c.ixm(ix));
+                        return Some(kv);
                     }
                 }
                 None
