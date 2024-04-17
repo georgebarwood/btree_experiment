@@ -2,6 +2,7 @@
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
 //!
+//! The Cursor implementation is not yet finished or fully tested.
 
 // Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
 
@@ -150,7 +151,8 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         Q: Ord + ?Sized,
     {
         unsafe {
-            // Converting map to raw pointer is necessary to keep Miri happy and avoid UB.
+            // Converting map to raw pointer here is necessary to keep Miri happy
+            // although not when using MIRIFLAGS=-Zmiri-tree-borrows.
             let map: *mut BTreeMap<K, V> = map;
             let mut s = Self::make(map);
             s.push_lower(&mut (*map).tree, bound);
@@ -290,7 +292,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
 
     /// Remove next element.
     pub fn remove_next(&mut self) -> Option<(K, V)> {
-        unsafe {
+        unsafe {            
             let leaf = self.leaf.unwrap_unchecked();
             let leaf_len = (*leaf).0.len();
             if self.index == leaf_len {
@@ -306,11 +308,13 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                             ix += 1;
                         }
                         self.push((*nl).c.ixm(ix));
+                        (*self.map).len -=1;
                         return Some(kv);
                     }
                 }
                 None
             } else {
+                (*self.map).len -=1;
                 Some((*leaf).0.remove(self.index))
             }
         }
