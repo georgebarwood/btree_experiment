@@ -19,6 +19,48 @@ use std::{
 };
 
 #[test]
+fn exp_remove_test() {
+    for _rep in 0..1000 {
+        let n = 10000;
+        let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            c.insert_before(i, i);
+        }
+        assert!(m.len() == n);
+
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        let mut i = 0;
+        while let Some((k, v)) = c.remove_next() {
+            assert_eq!((k, v), (i, i));
+            i += 1;
+        }
+        assert_eq!(i, n);
+    }
+}
+
+#[test]
+fn std_remove_test() {
+    for _rep in 0..1000 {
+        let n = 10000;
+        let mut m = std::collections::BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            c.insert_before(i, i).unwrap();
+        }
+        assert!(m.len() == n);
+
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        let mut i = 0;
+        while let Some((k, v)) = c.remove_next() {
+            assert_eq!((k, v), (i, i));
+            i += 1;
+        }
+        assert_eq!(i, n);
+    }
+}
+
+#[test]
 fn exp_cursor_insert_test() {
     for _rep in 0..1 {
         let n = 1000;
@@ -292,7 +334,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
 
     /// Remove next element.
     pub fn remove_next(&mut self) -> Option<(K, V)> {
-        unsafe {            
+        unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             let leaf_len = (*leaf).0.len();
             if self.index == leaf_len {
@@ -305,16 +347,18 @@ impl<'a, K, V> CursorMut<'a, K, V> {
                         } else {
                             let rep = (*leaf).0.pop().unwrap();
                             kv = std::mem::replace((*nl).v.ixm(ix), rep);
+                            println!("removed from parent leaf_len > 0");
                             ix += 1;
                         }
+                        self.stack.push((nl, ix));
                         self.push((*nl).c.ixm(ix));
-                        (*self.map).len -=1;
+                        (*self.map).len -= 1;
                         return Some(kv);
                     }
                 }
                 None
             } else {
-                (*self.map).len -=1;
+                (*self.map).len -= 1;
                 Some((*leaf).0.remove(self.index))
             }
         }
