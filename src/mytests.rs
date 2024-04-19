@@ -1,13 +1,58 @@
 use crate::*;
 
 #[test]
-fn exp_cursor_remove_test() {
+fn exp_cursor_remove_rev_test() {
     for _rep in 0..1000 {
         let n = 10000;
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
-            c.insert_before(i, i);
+            c.insert_before(i, i).unwrap();
+        }
+        assert!(m.len() == n);
+
+        let mut c = m.upper_bound_mut(Bound::Unbounded);
+        let mut i = n;
+        while let Some((k, v)) = c.remove_prev() {
+            i -= 1;
+            assert_eq!((k, v), (i, i));
+            // println!("Ok, i={}", i);
+        }
+        assert_eq!(i, 0);
+    }
+}
+
+#[test]
+fn std_cursor_remove_rev_test() {
+    for _rep in 0..1000 {
+        let n = 10000;
+        let mut m = std::collections::BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            unsafe {
+                c.insert_before_unchecked(i, i);
+            }
+        }
+        assert!(m.len() == n);
+
+        let mut c = m.upper_bound_mut(Bound::Unbounded);
+        let mut i = n;
+        while let Some((k, v)) = c.remove_prev() {
+            i -= 1;
+            assert_eq!((k, v), (i, i));
+        }
+        assert_eq!(i, 0);
+    }
+}
+
+#[test]
+fn exp_cursor_remove_fwd_test() {
+    for _rep in 0..1000 {
+        let n = 10000;
+        let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            c.insert_before(i, i).unwrap();
         }
         assert!(m.len() == n);
 
@@ -22,7 +67,7 @@ fn exp_cursor_remove_test() {
 }
 
 #[test]
-fn std_cursor_remove_test() {
+fn std_cursor_remove_fwd_test() {
     for _rep in 0..1000 {
         let n = 10000;
         let mut m = std::collections::BTreeMap::<usize, usize>::new();
@@ -49,12 +94,17 @@ fn exp_cursor_insert_test() {
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
-            c.insert_before(i, i);
+            c.insert_before(i, i).unwrap();
         }
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
             let (k, v) = c.next().unwrap();
             assert_eq!((*k, *v), (i, i));
+        }
+        let mut c = m.upper_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            let (k, v) = c.prev().unwrap();
+            assert_eq!((*k, *v), (n - i - 1, n - i - 1));
         }
     }
 }
@@ -66,9 +116,7 @@ fn std_cursor_insert_test() {
         let mut m = std::collections::BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
-            unsafe {
-                c.insert_before_unchecked(i, i);
-            }
+            c.insert_before(i, i).unwrap();
         }
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {

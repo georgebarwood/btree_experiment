@@ -1,4 +1,4 @@
-//! This crate implements a BTreeMap similar to std::collections::BTreeMap.
+//! This crate implements a BTreeMap similar to [std::collections::BTreeMap].
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
 //!
@@ -19,7 +19,8 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-// #[cfg(test)] mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
 
 // These can have a dramatic effect on performance.
 const LEAF_SPLIT: usize = 20;
@@ -315,8 +316,9 @@ impl<K, V> BTreeMap<K, V> {
         let (tree, len) = (std::mem::take(&mut other.tree), other.len);
         other.len = 0;
         let temp = BTreeMap { len, tree };
+        // Could use Cursor to do this more efficiently.
         for (k, v) in temp {
-            self.insert(k, v); // Could have append method which would be faster, or some kind of cursor.
+            self.insert(k, v);
         }
     }
 
@@ -326,23 +328,14 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Borrow<Q> + Ord,
     {
-        /*
-        let mut map = Self::new();
-        while let Some((k, v)) = self.pop_last() {
-            if k.borrow() < key {
-                self.insert(k, v);
-                break;
-            }
-            map.insert(k, v);
-        }
-        map
-        */
-
+        // This implementation could be more efficient.
         let mut map = Self::new();
         let mut from = self.lower_bound_mut(Bound::Included(key));
         let mut to = map.lower_bound_mut(Bound::Unbounded);
         while let Some((k, v)) = from.remove_next() {
-            to.insert_before(k, v);
+            unsafe {
+                to.insert_before_unchecked(k, v);
+            }
         }
         map
     }
@@ -683,8 +676,6 @@ where
     where
         D: Deserializer<'de>,
     {
-        // Instantiate our Visitor and ask the Deserializer to drive
-        // it over the input data, resulting in an instance of MyMap.
         deserializer.deserialize_map(BTreeMapVisitor::new())
     }
 }
@@ -1371,14 +1362,6 @@ impl<K, V> Leaf<K, V> {
         removed
     }
 
-    fn iter_mut(&mut self) -> IterLeafMut<'_, K, V> {
-        IterLeafMut(self.0.iter_mut())
-    }
-
-    fn iter(&self) -> IterLeaf<'_, K, V> {
-        IterLeaf(self.0.iter())
-    }
-
     fn get_xy<T, R>(&self, range: &R) -> (usize, usize)
     where
         T: Ord + ?Sized,
@@ -1395,6 +1378,14 @@ impl<K, V> Leaf<K, V> {
             y -= 1;
         }
         (x, y)
+    }
+
+    fn iter_mut(&mut self) -> IterLeafMut<'_, K, V> {
+        IterLeafMut(self.0.iter_mut())
+    }
+
+    fn iter(&self) -> IterLeaf<'_, K, V> {
+        IterLeaf(self.0.iter())
     }
 } // End impl Leaf
 
@@ -2481,6 +2472,9 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 // Cursors.
 
+/// Error type for [CursorMut::insert_before] and [CursorMut::insert_after].
+#[derive(Debug, Clone)]
+pub struct UnorderedKeyError {}
 
 /// Cursor that allows mutation of map, returned by [BTreeMap::lower_bound_mut], [BTreeMap::upper_bound_mut].
 pub struct CursorMut<'a, K, V> {
@@ -2597,13 +2591,61 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     }
 
     /// Insert leaving cursor after newly inserted element.
-    pub fn insert_before(&mut self, key: K, value: V) {
-        self.insert_after(key, value);
+    pub fn insert_before(&mut self, key: K, value: V) -> Result<(), UnorderedKeyError>
+    where
+        K: Ord,
+    {
+        if let Some((prev, _)) = self.peek_prev() {
+            if &key <= prev {
+                return Err(UnorderedKeyError {});
+            }
+        }
+        if let Some((next, _)) = self.peek_next() {
+            if &key >= next {
+                return Err(UnorderedKeyError {});
+            }
+        }
+        unsafe {
+            self.insert_before_unchecked(key, value);
+        }
+        Ok(())
+    }
+
+    /// Insert leaving cursor before newly inserted element.
+    pub fn insert_after(&mut self, key: K, value: V) -> Result<(), UnorderedKeyError>
+    where
+        K: Ord,
+    {
+        if let Some((prev, _)) = self.peek_prev() {
+            if &key <= prev {
+                return Err(UnorderedKeyError {});
+            }
+        }
+        if let Some((next, _)) = self.peek_next() {
+            if &key >= next {
+                return Err(UnorderedKeyError {});
+            }
+        }
+        unsafe {
+            self.insert_after_unchecked(key, value);
+        }
+        Ok(())
+    }
+
+    /// Insert leaving cursor after newly inserted element.
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    pub unsafe fn insert_before_unchecked(&mut self, key: K, value: V) {
+        self.insert_after_unchecked(key, value);
         self.index += 1;
     }
 
     /// Insert leaving cursor before newly inserted element.
-    pub fn insert_after(&mut self, key: K, value: V) {
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    pub unsafe fn insert_after_unchecked(&mut self, key: K, value: V) {
         unsafe {
             (*self.map).len += 1;
             let mut leaf = self.leaf.unwrap_unchecked();
@@ -2654,18 +2696,16 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub fn remove_next(&mut self) -> Option<(K, V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
-            let leaf_len = (*leaf).0.len();
-            if self.index == leaf_len {
+            if self.index == (*leaf).0.len() {
                 while let Some((nl, mut ix)) = self.stack.pop() {
                     if ix < (*nl).v.len() {
                         let kv;
-                        if leaf_len == 0 {
-                            kv = (*nl).v.remove(ix);
-                            (*nl).c.remove(ix);
-                        } else {
-                            let rep = (*leaf).0.pop().unwrap();
+                        if let Some(rep) = (*nl).c.ixm(ix).pop_last() {
                             kv = std::mem::replace((*nl).v.ixm(ix), rep);
                             ix += 1;
+                        } else {
+                            kv = (*nl).v.remove(ix);
+                            (*nl).c.remove(ix);
                         }
                         self.stack.push((nl, ix));
                         self.push((*nl).c.ixm(ix));
@@ -2766,9 +2806,6 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         }
     }
 }
-
-
-
 
 /// Cursor returned by [BTreeMap::lower_bound], [BTreeMap::upper_bound].
 pub struct Cursor<'a, K, V> {

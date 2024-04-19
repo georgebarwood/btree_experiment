@@ -1,4 +1,6 @@
-/* Derived from std library BTreeMap tests ( https://github.com/rust-lang/rust/blob/master/library/alloc/src/collections/btree/map/tests.rs ), but has been hacked around a lot, many tests removed for various reasons.
+/* Derived from std library BTreeMap tests (
+https://github.com/rust-lang/rust/blob/master/library/alloc/src/collections/btree/map/tests.rs
+), but has been hacked around a lot, many tests removed for various reasons.
    Some could be restored if I ever find time.
 */
 
