@@ -1,8 +1,6 @@
 //! This crate implements a BTreeMap similar to [std::collections::BTreeMap].
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
-//!
-//! The Cursor implementation is not yet complete or fully tested.
 
 // Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode
 // when the unsafe_optim feature is enabled, but are not declared as such to avoid littering
@@ -17,6 +15,13 @@
    Entry API (Entry, OccupiedEntry, VacantEntry).
    Iterators.
    Cursors.
+*/
+
+/* ToDo list
+   Consider  direct implementation of split_off rather than using Cursor.
+   Maybe implement Entry API using Cursor.
+   Compare trait implementations for each public struct/enum with std.
+   new_in , allocator stuff.
 */
 
 #![deny(missing_docs)]
@@ -209,6 +214,21 @@ impl<K, V> BTreeMap<K, V> {
             self.len += 1;
         }
         x.value
+    }
+
+    /// Tries to insert a key-value pair into the map, and returns
+    /// a mutable reference to the value in the entry.
+    ///
+    /// If the map already had this key present, nothing is updated, and
+    /// an error containing the occupied entry and the value is returned.
+    pub fn try_insert(&mut self, key: K, value: V) -> Result<&mut V, OccupiedError<'_, K, V>>
+    where
+        K: Ord,
+    {
+        match self.entry(key) {
+            Entry::Occupied(entry) => Err(OccupiedError { entry, value }),
+            Entry::Vacant(entry) => Ok(entry.insert(value)),
+        }
     }
 
     /// Does the map have an entry for the specified key.
@@ -1445,6 +1465,18 @@ impl<K, V> NonLeaf<K, V> {
     }
 } // End impl NonLeaf
 
+/// Error returned by [BTreeMap::try_insert].
+pub struct OccupiedError<'a, K, V>
+where
+    K: 'a,
+    V: 'a,
+{
+    /// Occupied entry, has the key that was not inserted.
+    pub entry: OccupiedEntry<'a, K, V>,
+    /// Value that was not inserted.
+    pub value: V,
+}
+
 /// Entry in BTreeMap, returned by [BTreeMap::entry].
 pub enum Entry<'a, K, V> {
     /// Vacant entry - map doesn't yet contain key.
@@ -2589,7 +2621,9 @@ where
     F: FnMut(&K, &mut V) -> bool,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("ExtractIf").field(&self.source.peek_next()).finish()
+        f.debug_tuple("ExtractIf")
+            .field(&self.source.peek_next())
+            .finish()
     }
 }
 impl<'a, K, V, F> Iterator for ExtractIf<'a, K, V, F>
@@ -2608,10 +2642,7 @@ where
         }
     }
 }
-impl<'a, K, V, F> FusedIterator for ExtractIf<'a, K, V, F>
-where
-    F: FnMut(&K, &mut V) -> bool
-{}
+impl<'a, K, V, F> FusedIterator for ExtractIf<'a, K, V, F> where F: FnMut(&K, &mut V) -> bool {}
 
 // Cursors.
 
