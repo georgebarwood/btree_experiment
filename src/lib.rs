@@ -2,9 +2,22 @@
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
 //!
-//! The Cursor implementation is not yet finished or fully tested.
+//! The Cursor implementation is not yet complete or fully tested.
 
-// Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode when the unsafe_optim feature is enabled, but are not declared as such to avoid littering the code with unsafe blocks.
+// Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode 
+// when the unsafe_optim feature is enabled, but are not declared as such to avoid littering 
+// the code with unsafe blocks.
+
+/* Layout of this file:
+   Global directives, configuration.
+   Constants.
+   Vector and other type aliases, use declarations.
+   Function check_range.
+   BTreeMap struct, and directly related enums structs (InsertCtx,Tree,Leaf,NonLeaf).
+   Entry API (Entry, OccupiedEntry, VacantEntry).
+   Iterators.
+   Cursors.
+*/
 
 #![feature(btree_cursors)]
 #![deny(missing_docs)]
@@ -680,275 +693,6 @@ where
     }
 }
 
-struct InsertCtx<K, V> {
-    value: Option<V>,
-    split: Option<Split<K, V>>,
-}
-
-/// Entry in BTreeMap, returned by [BTreeMap::entry].
-pub enum Entry<'a, K, V> {
-    /// Vacant entry - map doesn't yet contain key.
-    Vacant(VacantEntry<'a, K, V>),
-    /// Occupied entry - map already contains key.
-    Occupied(OccupiedEntry<'a, K, V>),
-}
-impl<'a, K, V> Entry<'a, K, V>
-where
-    K: Ord,
-{
-    /// Get reference to entry key.
-    pub fn key(&self) -> &K {
-        match self {
-            Entry::Vacant(e) => &e.key,
-            Entry::Occupied(e) => e.key(),
-        }
-    }
-
-    /// Insert default value, returning mutable reference to inserted value.
-    pub fn or_default(self) -> &'a mut V
-    where
-        V: Default,
-    {
-        match self {
-            Entry::Vacant(e) => e.insert(Default::default()),
-            Entry::Occupied(e) => e.into_mut(),
-        }
-    }
-
-    /// Insert value, returning mutable reference to inserted value.
-    pub fn or_insert(self, value: V) -> &'a mut V {
-        match self {
-            Entry::Vacant(e) => e.insert(value),
-            Entry::Occupied(e) => e.into_mut(),
-        }
-    }
-
-    /// Insert default value obtained from function, returning mutable reference to inserted value.
-    pub fn or_insert_with<F>(self, default: F) -> &'a mut V
-    where
-        F: FnOnce() -> V,
-    {
-        match self {
-            Entry::Vacant(e) => e.insert(default()),
-            Entry::Occupied(e) => e.into_mut(),
-        }
-    }
-
-    /// Insert default value obtained from function called with key, returning mutable reference to inserted value.
-    pub fn or_insert_with_key<F>(self, default: F) -> &'a mut V
-    where
-        F: FnOnce(&K) -> V,
-    {
-        match self {
-            Entry::Vacant(e) => {
-                let value = default(e.key());
-                e.insert(value)
-            }
-            Entry::Occupied(e) => e.into_mut(),
-        }
-    }
-
-    /// Modify existing value ( if entry is occupied ).
-    pub fn and_modify<F>(mut self, f: F) -> Entry<'a, K, V>
-    where
-        F: FnOnce(&mut V),
-    {
-        match &mut self {
-            Entry::Vacant(_e) => {}
-            Entry::Occupied(e) => {
-                let v = e.get_mut();
-                f(v);
-            }
-        }
-        self
-    }
-}
-
-enum TreePtr<K, V> {
-    None,
-    L(*mut Leaf<K, V>, usize),
-    NL(*mut NonLeaf<K, V>, usize),
-}
-unsafe impl<K: Send, V: Send> Send for TreePtr<K, V> {}
-unsafe impl<K: Sync, V: Send> Sync for TreePtr<K, V> {}
-impl<K, V> TreePtr<K, V> {
-    fn value_mut(&mut self) -> &mut V {
-        match self {
-            TreePtr::None => panic!(),
-            TreePtr::L(ptr, ix) => unsafe { &mut (*(*ptr)).0.ixm(*ix).1 },
-            TreePtr::NL(ptr, ix) => unsafe { &mut (*(*ptr)).v.ixm(*ix).1 },
-        }
-    }
-
-    fn value_ref(&self) -> &V {
-        match self {
-            TreePtr::None => panic!(),
-            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0.ix(*ix).1 },
-            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v.ix(*ix).1 },
-        }
-    }
-
-    fn key_ref(&self) -> &K {
-        match self {
-            TreePtr::None => panic!(),
-            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0.ix(*ix).0 },
-            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v.ix(*ix).0 },
-        }
-    }
-}
-
-/// Represents position of key in Btree.
-struct Position<K, V> {
-    key_found: bool,
-    ix: PosVec,
-    ptr: TreePtr<K, V>,
-}
-impl<K, V> Position<K, V> {
-    fn new() -> Self {
-        Self {
-            key_found: false,
-            ix: PosVec::new(),
-            ptr: TreePtr::None,
-        }
-    }
-}
-
-/// Vacant [Entry].
-pub struct VacantEntry<'a, K, V> {
-    map: *mut BTreeMap<K, V>,
-    key: K,
-    pos: Position<K, V>,
-    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
-}
-unsafe impl<'a, K: Send, V: Send> Send for VacantEntry<'a, K, V> {}
-unsafe impl<'a, K: Sync, V: Send> Sync for VacantEntry<'a, K, V> {}
-
-impl<'a, K, V> VacantEntry<'a, K, V>
-where
-    K: Ord,
-{
-    /// Get reference to entry key.
-    pub fn key(&self) -> &K {
-        &self.key
-    }
-
-    /// Get entry key.
-    pub fn into_key(self) -> K {
-        self.key
-    }
-
-    /// Insert value into map returning reference to inserted value.
-    pub fn insert(mut self, value: V) -> &'a mut V {
-        match self.pos.ptr {
-            TreePtr::L(ptr, ix) => unsafe {
-                let x = &mut (*ptr).0;
-                x.insert(ix, (self.key, value));
-                let result = &mut x.ixm(ix).1;
-                (*self.map).len += 1;
-                result
-            },
-            _ => unsafe { &mut (*self.map).ins_pos(&mut self.pos, self.key, value).1 },
-        }
-    }
-}
-
-enum OccupiedEntryKey<K, V> {
-    First,
-    Last,
-    Some(Position<K, V>),
-}
-
-/// Occupied [Entry].
-pub struct OccupiedEntry<'a, K, V> {
-    map: *mut BTreeMap<K, V>,
-    key: OccupiedEntryKey<K, V>,
-    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
-}
-unsafe impl<'a, K: Send, V: Send> Send for OccupiedEntry<'a, K, V> {}
-unsafe impl<'a, K: Sync, V: Send> Sync for OccupiedEntry<'a, K, V> {}
-
-impl<'a, K, V> OccupiedEntry<'a, K, V>
-where
-    K: Ord,
-{
-    /// Get reference to entry key.
-    pub fn key(&self) -> &K {
-        unsafe {
-            match &self.key {
-                OccupiedEntryKey::Some(pos) => pos.ptr.key_ref(),
-                OccupiedEntryKey::First => (*self.map).first_key_value().unwrap().0,
-                OccupiedEntryKey::Last => (*self.map).last_key_value().unwrap().0,
-            }
-        }
-    }
-
-    /// Remove (key,value) from map, returning key and value.
-    pub fn remove_entry(self) -> (K, V) {
-        unsafe {
-            match &self.key {
-                OccupiedEntryKey::Some(pos) => {
-                    let result = match pos.ptr {
-                        TreePtr::L(ptr, ix) => (*ptr).0.remove(ix),
-                        TreePtr::NL(ptr, ix) => (*ptr).remove_at(ix),
-                        TreePtr::None => panic!(),
-                    };
-                    (*self.map).len -= 1;
-                    result
-                }
-                OccupiedEntryKey::First => (*self.map).pop_first().unwrap(),
-                OccupiedEntryKey::Last => (*self.map).pop_last().unwrap(),
-            }
-        }
-    }
-
-    /// Remove (key,value) from map, returning the value.
-    pub fn remove(self) -> V {
-        self.remove_entry().1
-    }
-
-    /// Get reference to the value.
-    pub fn get(&self) -> &V {
-        unsafe {
-            match &self.key {
-                OccupiedEntryKey::Some(pos) => pos.ptr.value_ref(),
-                OccupiedEntryKey::First => (*self.map).first_key_value().unwrap().1,
-                OccupiedEntryKey::Last => (*self.map).last_key_value().unwrap().1,
-            }
-        }
-    }
-
-    /// Get mutable reference to the value.
-    pub fn get_mut(&mut self) -> &mut V {
-        unsafe {
-            match &mut self.key {
-                OccupiedEntryKey::Some(pos) => pos.ptr.value_mut(),
-                OccupiedEntryKey::First => (*self.map).first_key_value_mut().unwrap().1,
-                OccupiedEntryKey::Last => (*self.map).last_key_value_mut().unwrap().1,
-            }
-        }
-    }
-
-    /// Get mutable reference to the value, consuming the entry.
-    pub fn into_mut(mut self) -> &'a mut V {
-        unsafe {
-            match &mut self.key {
-                OccupiedEntryKey::Some(pos) => match pos.ptr {
-                    TreePtr::None => panic!(),
-                    TreePtr::L(ptr, ix) => &mut (*ptr).0.ixm(ix).1,
-                    TreePtr::NL(ptr, ix) => &mut (*ptr).v.ixm(ix).1,
-                },
-                OccupiedEntryKey::First => (*self.map).first_key_value_mut().unwrap().1,
-                OccupiedEntryKey::Last => (*self.map).last_key_value_mut().unwrap().1,
-            }
-        }
-    }
-
-    /// Update the value returns the old value.
-    pub fn insert(&mut self, value: V) -> V {
-        std::mem::replace(self.get_mut(), value)
-    }
-}
-
 enum Tree<K, V> {
     L(Leaf<K, V>),
     NL(NonLeaf<K, V>),
@@ -1175,6 +919,11 @@ impl<K, V> Tree<K, V> {
         false
     }
 } // End impl Tree
+
+struct InsertCtx<K, V> {
+    value: Option<V>,
+    split: Option<Split<K, V>>,
+}
 
 struct Leaf<K, V>(LeafVec<K, V>);
 impl<K, V> Leaf<K, V> {
@@ -1677,6 +1426,270 @@ impl<K, V> NonLeaf<K, V> {
         (x, y)
     }
 } // End impl NonLeaf
+
+/// Entry in BTreeMap, returned by [BTreeMap::entry].
+pub enum Entry<'a, K, V> {
+    /// Vacant entry - map doesn't yet contain key.
+    Vacant(VacantEntry<'a, K, V>),
+    /// Occupied entry - map already contains key.
+    Occupied(OccupiedEntry<'a, K, V>),
+}
+impl<'a, K, V> Entry<'a, K, V>
+where
+    K: Ord,
+{
+    /// Get reference to entry key.
+    pub fn key(&self) -> &K {
+        match self {
+            Entry::Vacant(e) => &e.key,
+            Entry::Occupied(e) => e.key(),
+        }
+    }
+
+    /// Insert default value, returning mutable reference to inserted value.
+    pub fn or_default(self) -> &'a mut V
+    where
+        V: Default,
+    {
+        match self {
+            Entry::Vacant(e) => e.insert(Default::default()),
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Insert value, returning mutable reference to inserted value.
+    pub fn or_insert(self, value: V) -> &'a mut V {
+        match self {
+            Entry::Vacant(e) => e.insert(value),
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Insert default value obtained from function, returning mutable reference to inserted value.
+    pub fn or_insert_with<F>(self, default: F) -> &'a mut V
+    where
+        F: FnOnce() -> V,
+    {
+        match self {
+            Entry::Vacant(e) => e.insert(default()),
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Insert default value obtained from function called with key, returning mutable reference to inserted value.
+    pub fn or_insert_with_key<F>(self, default: F) -> &'a mut V
+    where
+        F: FnOnce(&K) -> V,
+    {
+        match self {
+            Entry::Vacant(e) => {
+                let value = default(e.key());
+                e.insert(value)
+            }
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Modify existing value ( if entry is occupied ).
+    pub fn and_modify<F>(mut self, f: F) -> Entry<'a, K, V>
+    where
+        F: FnOnce(&mut V),
+    {
+        match &mut self {
+            Entry::Vacant(_e) => {}
+            Entry::Occupied(e) => {
+                let v = e.get_mut();
+                f(v);
+            }
+        }
+        self
+    }
+}
+
+enum TreePtr<K, V> {
+    None,
+    L(*mut Leaf<K, V>, usize),
+    NL(*mut NonLeaf<K, V>, usize),
+}
+unsafe impl<K: Send, V: Send> Send for TreePtr<K, V> {}
+unsafe impl<K: Sync, V: Send> Sync for TreePtr<K, V> {}
+impl<K, V> TreePtr<K, V> {
+    fn value_mut(&mut self) -> &mut V {
+        match self {
+            TreePtr::None => panic!(),
+            TreePtr::L(ptr, ix) => unsafe { &mut (*(*ptr)).0.ixm(*ix).1 },
+            TreePtr::NL(ptr, ix) => unsafe { &mut (*(*ptr)).v.ixm(*ix).1 },
+        }
+    }
+
+    fn value_ref(&self) -> &V {
+        match self {
+            TreePtr::None => panic!(),
+            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0.ix(*ix).1 },
+            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v.ix(*ix).1 },
+        }
+    }
+
+    fn key_ref(&self) -> &K {
+        match self {
+            TreePtr::None => panic!(),
+            TreePtr::L(ptr, ix) => unsafe { &(*(*ptr)).0.ix(*ix).0 },
+            TreePtr::NL(ptr, ix) => unsafe { &(*(*ptr)).v.ix(*ix).0 },
+        }
+    }
+}
+
+/// Represents position of key in Btree.
+struct Position<K, V> {
+    key_found: bool,
+    ix: PosVec,
+    ptr: TreePtr<K, V>,
+}
+impl<K, V> Position<K, V> {
+    fn new() -> Self {
+        Self {
+            key_found: false,
+            ix: PosVec::new(),
+            ptr: TreePtr::None,
+        }
+    }
+}
+
+/// Vacant [Entry].
+pub struct VacantEntry<'a, K, V> {
+    map: *mut BTreeMap<K, V>,
+    key: K,
+    pos: Position<K, V>,
+    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
+}
+unsafe impl<'a, K: Send, V: Send> Send for VacantEntry<'a, K, V> {}
+unsafe impl<'a, K: Sync, V: Send> Sync for VacantEntry<'a, K, V> {}
+
+impl<'a, K, V> VacantEntry<'a, K, V>
+where
+    K: Ord,
+{
+    /// Get reference to entry key.
+    pub fn key(&self) -> &K {
+        &self.key
+    }
+
+    /// Get entry key.
+    pub fn into_key(self) -> K {
+        self.key
+    }
+
+    /// Insert value into map returning reference to inserted value.
+    pub fn insert(mut self, value: V) -> &'a mut V {
+        match self.pos.ptr {
+            TreePtr::L(ptr, ix) => unsafe {
+                let x = &mut (*ptr).0;
+                x.insert(ix, (self.key, value));
+                let result = &mut x.ixm(ix).1;
+                (*self.map).len += 1;
+                result
+            },
+            _ => unsafe { &mut (*self.map).ins_pos(&mut self.pos, self.key, value).1 },
+        }
+    }
+}
+
+enum OccupiedEntryKey<K, V> {
+    First,
+    Last,
+    Some(Position<K, V>),
+}
+
+/// Occupied [Entry].
+pub struct OccupiedEntry<'a, K, V> {
+    map: *mut BTreeMap<K, V>,
+    key: OccupiedEntryKey<K, V>,
+    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
+}
+unsafe impl<'a, K: Send, V: Send> Send for OccupiedEntry<'a, K, V> {}
+unsafe impl<'a, K: Sync, V: Send> Sync for OccupiedEntry<'a, K, V> {}
+
+impl<'a, K, V> OccupiedEntry<'a, K, V>
+where
+    K: Ord,
+{
+    /// Get reference to entry key.
+    pub fn key(&self) -> &K {
+        unsafe {
+            match &self.key {
+                OccupiedEntryKey::Some(pos) => pos.ptr.key_ref(),
+                OccupiedEntryKey::First => (*self.map).first_key_value().unwrap().0,
+                OccupiedEntryKey::Last => (*self.map).last_key_value().unwrap().0,
+            }
+        }
+    }
+
+    /// Remove (key,value) from map, returning key and value.
+    pub fn remove_entry(self) -> (K, V) {
+        unsafe {
+            match &self.key {
+                OccupiedEntryKey::Some(pos) => {
+                    let result = match pos.ptr {
+                        TreePtr::L(ptr, ix) => (*ptr).0.remove(ix),
+                        TreePtr::NL(ptr, ix) => (*ptr).remove_at(ix),
+                        TreePtr::None => panic!(),
+                    };
+                    (*self.map).len -= 1;
+                    result
+                }
+                OccupiedEntryKey::First => (*self.map).pop_first().unwrap(),
+                OccupiedEntryKey::Last => (*self.map).pop_last().unwrap(),
+            }
+        }
+    }
+
+    /// Remove (key,value) from map, returning the value.
+    pub fn remove(self) -> V {
+        self.remove_entry().1
+    }
+
+    /// Get reference to the value.
+    pub fn get(&self) -> &V {
+        unsafe {
+            match &self.key {
+                OccupiedEntryKey::Some(pos) => pos.ptr.value_ref(),
+                OccupiedEntryKey::First => (*self.map).first_key_value().unwrap().1,
+                OccupiedEntryKey::Last => (*self.map).last_key_value().unwrap().1,
+            }
+        }
+    }
+
+    /// Get mutable reference to the value.
+    pub fn get_mut(&mut self) -> &mut V {
+        unsafe {
+            match &mut self.key {
+                OccupiedEntryKey::Some(pos) => pos.ptr.value_mut(),
+                OccupiedEntryKey::First => (*self.map).first_key_value_mut().unwrap().1,
+                OccupiedEntryKey::Last => (*self.map).last_key_value_mut().unwrap().1,
+            }
+        }
+    }
+
+    /// Get mutable reference to the value, consuming the entry.
+    pub fn into_mut(mut self) -> &'a mut V {
+        unsafe {
+            match &mut self.key {
+                OccupiedEntryKey::Some(pos) => match pos.ptr {
+                    TreePtr::None => panic!(),
+                    TreePtr::L(ptr, ix) => &mut (*ptr).0.ixm(ix).1,
+                    TreePtr::NL(ptr, ix) => &mut (*ptr).v.ixm(ix).1,
+                },
+                OccupiedEntryKey::First => (*self.map).first_key_value_mut().unwrap().1,
+                OccupiedEntryKey::Last => (*self.map).last_key_value_mut().unwrap().1,
+            }
+        }
+    }
+
+    /// Update the value returns the old value.
+    pub fn insert(&mut self, value: V) -> V {
+        std::mem::replace(self.get_mut(), value)
+    }
+}
 
 // Mutable reference iteration.
 
