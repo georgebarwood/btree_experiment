@@ -1,8 +1,7 @@
 use crate::*;
 
-
-const REP : usize = if cfg!(miri) { 10 } else { 1000 };
-const N : usize = if cfg!(miri) { 1000 } else { 10000 };
+const REP: usize = if cfg!(miri) { 10 } else { 1000 };
+const N: usize = if cfg!(miri) { 1000 } else { 10000 };
 
 #[test]
 fn exp_cursor_remove_rev_test() {
@@ -319,7 +318,7 @@ fn test_std_iter() {
 
 #[test]
 fn test_exp_into_iter() {
-    for _rep in 0..REP/10 {
+    for _rep in 0..REP / 10 {
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = N * 10;
         for i in 0..n {
@@ -333,7 +332,7 @@ fn test_exp_into_iter() {
 
 #[test]
 fn test_std_into_iter() {
-    for _rep in 0..REP/10 {
+    for _rep in 0..REP / 10 {
         let mut m = std::collections::BTreeMap::<usize, usize>::default();
         let n = N * 10;
         for i in 0..n {

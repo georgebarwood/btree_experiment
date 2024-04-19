@@ -24,10 +24,10 @@
 #![feature(assert_matches)]
 
 /* mimalloc cannot be used with miri */
-#[cfg(all(test,not(miri)))]
+#[cfg(all(test, not(miri)))]
 use mimalloc::MiMalloc;
 
-#[cfg(all(test,not(miri)))]
+#[cfg(all(test, not(miri)))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -357,16 +357,22 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get iterator of references to key-value pairs.
     pub fn iter(&self) -> Iter<'_, K, V> {
-        self.tree.iter()
+        Iter {
+            len: self.len,
+            inner: self.tree.iter(),
+        }
     }
 
     /// Get iterator of mutable references to key-value pairs.
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
-        self.tree.iter_mut()
+        IterMut {
+            len: self.len,
+            inner: self.tree.iter_mut(),
+        }
     }
 
     /// Get iterator for range of references to key-value pairs.
-    pub fn range<T, R>(&self, range: R) -> Iter<'_, K, V>
+    pub fn range<T, R>(&self, range: R) -> Range<'_, K, V>
     where
         T: Ord + ?Sized,
         K: Borrow<T> + Ord,
@@ -378,7 +384,7 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get iterator for range of mutable references to key-value pairs.
     /// A key can be mutated, provided it does not change the map order.
-    pub fn range_mut<T, R>(&mut self, range: R) -> IterMut<'_, K, V>
+    pub fn range_mut<T, R>(&mut self, range: R) -> RangeMut<'_, K, V>
     where
         T: Ord + ?Sized,
         K: Borrow<T> + Ord,
@@ -821,36 +827,36 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn iter_mut(&mut self) -> IterMut<'_, K, V> {
-        let mut x = IterMut::new();
+    fn iter_mut(&mut self) -> RangeMut<'_, K, V> {
+        let mut x = RangeMut::new();
         x.push_tree(self, true);
         x
     }
 
-    fn iter(&self) -> Iter<'_, K, V> {
-        let mut x = Iter::new();
+    fn iter(&self) -> Range<'_, K, V> {
+        let mut x = Range::new();
         x.push_tree(self, true);
         x
     }
 
-    fn range_mut<T, R>(&mut self, range: &R) -> IterMut<'_, K, V>
+    fn range_mut<T, R>(&mut self, range: &R) -> RangeMut<'_, K, V>
     where
         T: Ord + ?Sized,
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let mut x = IterMut::new();
+        let mut x = RangeMut::new();
         x.push_range(self, range, true);
         x
     }
 
-    fn range<T, R>(&self, range: &R) -> Iter<'_, K, V>
+    fn range<T, R>(&self, range: &R) -> Range<'_, K, V>
     where
         T: Ord + ?Sized,
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let mut x = Iter::new();
+        let mut x = Range::new();
         x.push_range(self, range, true);
         x
     }
@@ -1706,8 +1712,44 @@ enum StealResultMut<'a, K, V> {
     Nothing,
 }
 
-/// Iterator returned by [BTreeMap::iter_mut], [BTreeMap::range_mut].
+/// Iterator returned by [BTreeMap::iter_mut].
 pub struct IterMut<'a, K, V> {
+    len: usize,
+    inner: RangeMut<'a, K, V>,
+}
+impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+    type Item = (&'a K, &'a mut V);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            self.inner.next()
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            self.inner.next_back()
+        }
+    }
+}
+impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
+
+/// Iterator returned by [BTreeMap::range_mut].
+pub struct RangeMut<'a, K, V> {
     /* There are two iterations going on to implement DoubleEndedIterator.
        fwd_leaf and fwd_stk are initially used for forward (next) iteration,
        once they are exhausted, key-value pairs and child trees are "stolen" from
@@ -1718,7 +1760,7 @@ pub struct IterMut<'a, K, V> {
     fwd_stk: StkMutVec<'a, K, V>,
     bck_stk: StkMutVec<'a, K, V>,
 }
-impl<'a, K, V> IterMut<'a, K, V> {
+impl<'a, K, V> RangeMut<'a, K, V> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
@@ -1838,7 +1880,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
         StealResultMut::Nothing
     }
 }
-impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+impl<'a, K, V> Iterator for RangeMut<'a, K, V> {
     type Item = (&'a K, &'a mut V);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -1882,7 +1924,7 @@ impl<'a, K, V> Iterator for IterMut<'a, K, V> {
         }
     }
 }
-impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
+impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
@@ -1925,7 +1967,7 @@ impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
         }
     }
 }
-impl<'a, K, V> FusedIterator for IterMut<'a, K, V> {}
+impl<'a, K, V> FusedIterator for RangeMut<'a, K, V> {}
 
 // Consuming iteration.
 
@@ -2154,14 +2196,50 @@ enum StealResult<'a, K, V> {
     Nothing,
 }
 
-/// Iterator returned by [BTreeMap::iter], [BTreeMap::range].
+/// Iterator returned by [BTreeMap::iter].
 pub struct Iter<'a, K, V> {
+    len: usize,
+    inner: Range<'a, K, V>,
+}
+impl<'a, K, V> Iterator for Iter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            self.inner.next()
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+impl<'a, K, V> ExactSizeIterator for Iter<'a, K, V> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            self.inner.next_back()
+        }
+    }
+}
+impl<'a, K, V> FusedIterator for Iter<'a, K, V> {}
+
+/// Iterator returned by [BTreeMap::range].
+pub struct Range<'a, K, V> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
     bck_leaf: Option<IterLeaf<'a, K, V>>,
     fwd_stk: StkVec<'a, K, V>,
     bck_stk: StkVec<'a, K, V>,
 }
-impl<'a, K, V> Iter<'a, K, V> {
+impl<'a, K, V> Range<'a, K, V> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
@@ -2279,7 +2357,7 @@ impl<'a, K, V> Iter<'a, K, V> {
         StealResult::Nothing
     }
 }
-impl<'a, K, V> Iterator for Iter<'a, K, V> {
+impl<'a, K, V> Iterator for Range<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -2323,7 +2401,7 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
         }
     }
 }
-impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
+impl<'a, K, V> DoubleEndedIterator for Range<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
@@ -2366,7 +2444,7 @@ impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
         }
     }
 }
-impl<'a, K, V> FusedIterator for Iter<'a, K, V> {}
+impl<'a, K, V> FusedIterator for Range<'a, K, V> {}
 
 /// Consuming iterator returned by [BTreeMap::into_keys].
 pub struct IntoKeys<K, V>(IntoIter<K, V>);
@@ -2598,8 +2676,7 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     }
 
     /// Returns a read-only cursor pointing to the same location as the CursorMut.
-    pub fn as_cursor(&self) -> Cursor<'_, K, V>
-    {
+    pub fn as_cursor(&self) -> Cursor<'_, K, V> {
         self.0.as_cursor()
     }
 }
@@ -2906,17 +2983,16 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
     }
 
     /// Returns a read-only cursor pointing to the same location as the CursorMutKey.
-    pub fn as_cursor(&self) -> Cursor<'_, K, V>
-    { 
+    pub fn as_cursor(&self) -> Cursor<'_, K, V> {
         unsafe {
-        let mut c = Cursor::make();
-        c.index = self.index;
-        c.leaf = Some(&*self.leaf.unwrap());
-        for (nl,ix) in &self.stack
-        {
-           c.stack.push( (&(**nl), *ix) );
+            let mut c = Cursor::make();
+            c.index = self.index;
+            c.leaf = Some(&*self.leaf.unwrap());
+            for (nl, ix) in &self.stack {
+                c.stack.push((&(**nl), *ix));
+            }
+            c
         }
-        c }
     }
 }
 
