@@ -7,6 +7,7 @@ https://github.com/rust-lang/rust/blob/master/library/alloc/src/collections/btre
 use crate::Entry::*;
 use crate::*;
 
+use std::assert_matches::assert_matches;
 use std::fmt::Debug;
 use std::ops::Bound::{Excluded, Included, Unbounded};
 use std::rc::Rc;
@@ -1187,7 +1188,6 @@ fn test_cursor() {
     assert_eq!(cur.prev(), Some((&1, &'a')));
 }
 
-/*
 #[test]
 fn test_cursor_mut() {
     let mut map = BTreeMap::from([(1, 'a'), (3, 'c'), (5, 'e')]);
@@ -1329,10 +1329,9 @@ fn cursor_peek_prev_agrees_with_cursor_mut() {
     assert_matches!(prev, Some((&3, _)));
 
     // Shadow names so the two parts of this test match.
-    let mut cursor = map.lower_bound_mut(Bound::Excluded(&3));
+    let cursor = map.lower_bound_mut(Bound::Excluded(&3));
     assert!(cursor.peek_next().is_none());
 
     let prev = cursor.peek_prev();
     assert_matches!(prev, Some((&3, _)));
 }
-*/
