@@ -19,9 +19,12 @@
    Cursors.
 */
 
-#![feature(btree_cursors)]
 #![deny(missing_docs)]
-#![feature(assert_matches)]
+
+#![cfg_attr(
+    test,
+    feature(btree_cursors,assert_matches)
+)]
 
 /* mimalloc cannot be used with miri */
 #[cfg(all(test, not(miri)))]
