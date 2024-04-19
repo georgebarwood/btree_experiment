@@ -671,6 +671,118 @@ fn test_retain() {
     assert_eq!(map[&6], 60);
 }
 
+mod test_extract_if {
+    use super::*;
+    use std::iter;
+
+    #[test]
+    fn empty() {
+        let mut map: BTreeMap<i32, i32> = BTreeMap::new();
+        map.extract_if(|_, _| unreachable!("there's nothing to decide on"))
+            .for_each(drop);
+        // assert_eq!(map.height(), None);
+        map.check();
+    }
+
+    // Explicitly consumes the iterator, where most test cases drop it instantly.
+    #[test]
+    fn consumed_keeping_all() {
+        let pairs = (0..3).map(|i| (i, i));
+        let mut map = BTreeMap::from_iter(pairs);
+        assert!(map.extract_if(|_, _| false).eq(iter::empty()));
+        map.check();
+    }
+
+    // Explicitly consumes the iterator, where most test cases drop it instantly.
+    #[test]
+    fn consumed_removing_all() {
+        let pairs = (0..3).map(|i| (i, i));
+        let mut map = BTreeMap::from_iter(pairs.clone());
+        assert!(map.extract_if(|_, _| true).eq(pairs));
+        assert!(map.is_empty());
+        map.check();
+    }
+
+    // Explicitly consumes the iterator and modifies values through it.
+    #[test]
+    fn mutating_and_keeping() {
+        let pairs = (0..3).map(|i| (i, i));
+        let mut map = BTreeMap::from_iter(pairs);
+        assert!(map
+            .extract_if(|_, v| {
+                *v += 6;
+                false
+            })
+            .eq(iter::empty()));
+        assert!(map.keys().copied().eq(0..3));
+        assert!(map.values().copied().eq(6..9));
+        map.check();
+    }
+
+    // Explicitly consumes the iterator and modifies values through it.
+    #[test]
+    fn mutating_and_removing() {
+        let pairs = (0..3).map(|i| (i, i));
+        let mut map = BTreeMap::from_iter(pairs);
+        assert!(map
+            .extract_if(|_, v| {
+                *v += 6;
+                true
+            })
+            .eq((0..3).map(|i| (i, i + 6))));
+        assert!(map.is_empty());
+        map.check();
+    }
+
+    #[test]
+    fn underfull_keeping_all() {
+        let pairs = (0..3).map(|i| (i, i));
+        let mut map = BTreeMap::from_iter(pairs);
+        map.extract_if(|_, _| false).for_each(drop);
+        assert!(map.keys().copied().eq(0..3));
+        map.check();
+    }
+
+    #[test]
+    fn underfull_removing_one() {
+        let pairs = (0..3).map(|i| (i, i));
+        for doomed in 0..3 {
+            let mut map = BTreeMap::from_iter(pairs.clone());
+            map.extract_if(|i, _| *i == doomed).for_each(drop);
+            assert_eq!(map.len(), 2);
+            map.check();
+        }
+    }
+
+    #[test]
+    fn underfull_keeping_one() {
+        let pairs = (0..3).map(|i| (i, i));
+        for sacred in 0..3 {
+            let mut map = BTreeMap::from_iter(pairs.clone());
+            map.extract_if(|i, _| *i != sacred).for_each(drop);
+            assert!(map.keys().copied().eq(sacred..=sacred));
+            map.check();
+        }
+    }
+
+    #[test]
+    fn underfull_removing_all() {
+        let pairs = (0..3).map(|i| (i, i));
+        let mut map = BTreeMap::from_iter(pairs);
+        map.extract_if(|_, _| true).for_each(drop);
+        assert!(map.is_empty());
+        map.check();
+    }
+
+    #[test]
+    fn height_0_keeping_half() {
+        let mut map = BTreeMap::from_iter((0..16).map(|i| (i, i)));
+        assert_eq!(map.extract_if(|i, _| *i % 2 == 0).count(), 8);
+        assert_eq!(map.len(), 8);
+        map.check();
+    }
+}
+
 #[test]
 fn test_borrow() {
     // make sure these compile -- using the Borrow trait

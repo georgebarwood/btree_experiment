@@ -20,11 +20,7 @@
 */
 
 #![deny(missing_docs)]
-
-#![cfg_attr(
-    test,
-    feature(btree_cursors,assert_matches)
-)]
+#![cfg_attr(test, feature(btree_cursors, assert_matches))]
 
 /* mimalloc cannot be used with miri */
 #[cfg(all(test, not(miri)))]
@@ -356,6 +352,17 @@ impl<K, V> BTreeMap<K, V> {
             }
         }
         map
+    }
+
+    /// Returns iterator that visits all elements (key-value pairs) in ascending key order
+    /// and uses a closure to determine if an element should be removed.
+    pub fn extract_if<F>(&mut self, pred: F) -> ExtractIf<'_, K, V, F>
+    where
+        K: Ord,
+        F: FnMut(&K, &mut V) -> bool,
+    {
+        let source = self.lower_bound_mut(Bound::Unbounded);
+        ExtractIf { source, pred }
     }
 
     /// Get iterator of references to key-value pairs.
@@ -2565,6 +2572,46 @@ impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
     }
 }
 impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
+
+/// Iterator returned by [BTreeMap::extract_if].
+// #[derive(Debug)]
+pub struct ExtractIf<'a, K, V, F>
+where
+    F: FnMut(&K, &mut V) -> bool,
+{
+    source: CursorMut<'a, K, V>,
+    pred: F,
+}
+impl<K, V, F> fmt::Debug for ExtractIf<'_, K, V, F>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+    F: FnMut(&K, &mut V) -> bool,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ExtractIf").field(&self.source.peek_next()).finish()
+    }
+}
+impl<'a, K, V, F> Iterator for ExtractIf<'a, K, V, F>
+where
+    F: FnMut(&K, &mut V) -> bool,
+{
+    type Item = (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let (k, v) = self.source.peek_next()?;
+            if (self.pred)(k, v) {
+                return self.source.remove_next();
+            } else {
+                self.source.next();
+            }
+        }
+    }
+}
+impl<'a, K, V, F> FusedIterator for ExtractIf<'a, K, V, F>
+where
+    F: FnMut(&K, &mut V) -> bool
+{}
 
 // Cursors.
 
