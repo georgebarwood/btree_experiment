@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 fn test_basic_large() {
     let mut map = BTreeMap::new();
     // Miri is too slow
-    let size = 10000;
+    let size = if cfg!(miri) { 200 } else { 10000 };
     let size = size + (size % 2); // round up to even number
     assert_eq!(map.len(), 0);
 

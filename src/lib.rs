@@ -23,10 +23,11 @@
 #![deny(missing_docs)]
 #![feature(assert_matches)]
 
-#[cfg(test)]
+/* mimalloc cannot be used with miri */
+#[cfg(all(test,not(miri)))]
 use mimalloc::MiMalloc;
 
-#[cfg(test)]
+#[cfg(all(test,not(miri)))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -2595,6 +2596,12 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     pub unsafe fn with_mutable_key(self) -> CursorMutKey<'a, K, V> {
         self.0
     }
+
+    /// Returns a read-only cursor pointing to the same location as the CursorMut.
+    pub fn as_cursor(&self) -> Cursor<'_, K, V>
+    {
+        self.0.as_cursor()
+    }
 }
 
 /// Cursor that allows mutation of map keys, returned by [CursorMut::with_mutable_key].
@@ -2897,9 +2904,24 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
             }
         }
     }
+
+    /// Returns a read-only cursor pointing to the same location as the CursorMutKey.
+    pub fn as_cursor(&self) -> Cursor<'_, K, V>
+    { 
+        unsafe {
+        let mut c = Cursor::make();
+        c.index = self.index;
+        c.leaf = Some(&*self.leaf.unwrap());
+        for (nl,ix) in &self.stack
+        {
+           c.stack.push( (&(**nl), *ix) );
+        }
+        c }
+    }
 }
 
 /// Cursor returned by [BTreeMap::lower_bound], [BTreeMap::upper_bound].
+#[derive(Debug, Clone)]
 pub struct Cursor<'a, K, V> {
     leaf: Option<*const Leaf<K, V>>, // Maybe can use orderinary reference rather than pointer.
     index: usize,
