@@ -18,10 +18,7 @@
 */
 
 /* ToDo list
-   Consider  direct implementation of split_off rather than using Cursor.
-   Maybe implement Entry API using Cursor.
    Compare trait implementations for each public struct/enum with std.
-   new_in , allocator stuff.
 */
 
 #![deny(missing_docs)]
@@ -362,7 +359,6 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Borrow<Q> + Ord,
     {
-        // This implementation could be more efficient.
         let mut map = Self::new();
         let mut from = self.lower_bound_mut(Bound::Included(key));
         let mut to = map.lower_bound_mut(Bound::Unbounded);

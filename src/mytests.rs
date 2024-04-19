@@ -4,6 +4,38 @@ const REP: usize = if cfg!(miri) { 10 } else { 1000 };
 const N: usize = if cfg!(miri) { 1000 } else { 10000 };
 
 #[test]
+fn exp_split_off_test() {
+    for _rep in 0..REP {
+        let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        let n = N;
+        for i in 0..n {
+            c.insert_before(i, i).unwrap();
+        }
+        assert!(m.len() == n);
+        let m2 = m.split_off(&(n/2));
+        assert!(m2.len() == n/2);
+        assert!(m.len()+m2.len() == n);
+     }
+} 
+
+#[test]
+fn std_split_off_test() {
+    for _rep in 0..REP {
+        let mut m = std::collections:: BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        let n = N;
+        for i in 0..n {
+            c.insert_before(i, i).unwrap();
+        }
+        assert!(m.len() == n);
+        let m2 = m.split_off(&(n/2));
+        assert!(m2.len() == n/2);
+        assert!(m.len()+m2.len() == n);
+     }
+} 
+
+#[test]
 fn exp_cursor_remove_rev_test() {
     for _rep in 0..REP {
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
@@ -28,7 +60,7 @@ fn exp_cursor_remove_rev_test() {
 #[test]
 fn std_cursor_remove_rev_test() {
     for _rep in 0..REP {
-        let n = 10 * N;
+        let n = N;
         let mut m = std::collections::BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         for i in 0..n {
