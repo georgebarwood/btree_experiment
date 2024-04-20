@@ -254,6 +254,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
     /// Get mutable reference to ith element.
     #[inline]
     pub fn ixm(&mut self, ix: usize) -> &mut T {
+        assert!(ix < self.len, "ix={} len={}", ix, self.len);
         safe_assert!(ix < self.len);
         unsafe { &mut *self.v.ix(ix) }
     }

@@ -1,4 +1,5 @@
 use crate::*;
+use std::ops::Bound;
 
 const REP: usize = if cfg!(miri) { 10 } else { 1000 };
 const N: usize = if cfg!(miri) { 1000 } else { 10000 };
@@ -13,27 +14,27 @@ fn exp_split_off_test() {
             c.insert_before(i, i).unwrap();
         }
         assert!(m.len() == n);
-        let m2 = m.split_off(&(n/2));
-        assert!(m2.len() == n/2);
-        assert!(m.len()+m2.len() == n);
-     }
-} 
+        let m2 = m.split_off(&(n / 2));
+        assert!(m2.len() == n / 2);
+        assert!(m.len() + m2.len() == n);
+    }
+}
 
 #[test]
 fn std_split_off_test() {
     for _rep in 0..REP {
-        let mut m = std::collections:: BTreeMap::<usize, usize>::new();
+        let mut m = std::collections::BTreeMap::<usize, usize>::new();
         let mut c = m.lower_bound_mut(Bound::Unbounded);
         let n = N;
         for i in 0..n {
             c.insert_before(i, i).unwrap();
         }
         assert!(m.len() == n);
-        let m2 = m.split_off(&(n/2));
-        assert!(m2.len() == n/2);
-        assert!(m.len()+m2.len() == n);
-     }
-} 
+        let m2 = m.split_off(&(n / 2));
+        assert!(m2.len() == n / 2);
+        assert!(m.len() + m2.len() == n);
+    }
+}
 
 #[test]
 fn exp_cursor_remove_rev_test() {
@@ -230,7 +231,7 @@ fn mut_cursor_test() {
 }
 
 #[test]
-fn test_is_this_ub() {
+fn is_this_ub() {
     BTreeMap::new().entry(0).or_insert('a');
 
     let mut m = BTreeMap::new();
@@ -255,7 +256,7 @@ fn basic_range_test() {
 }
 
 #[test]
-fn test_exp_insert_fwd() {
+fn exp_insert_fwd() {
     for _rep in 0..REP {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = N;
@@ -266,7 +267,7 @@ fn test_exp_insert_fwd() {
 }
 
 #[test]
-fn test_std_insert_fwd() {
+fn std_insert_fwd() {
     for _rep in 0..REP {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = N;
@@ -277,7 +278,7 @@ fn test_std_insert_fwd() {
 }
 
 #[test]
-fn test_exp_insert_rev() {
+fn exp_insert_rev() {
     for _rep in 0..REP {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = N;
@@ -288,7 +289,7 @@ fn test_exp_insert_rev() {
 }
 
 #[test]
-fn test_std_insert_rev() {
+fn std_insert_rev() {
     for _rep in 0..REP {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = N;
@@ -299,7 +300,7 @@ fn test_std_insert_rev() {
 }
 
 #[test]
-fn test_exp_entry() {
+fn exp_entry() {
     for _rep in 0..REP {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = N;
@@ -310,7 +311,7 @@ fn test_exp_entry() {
 }
 
 #[test]
-fn test_std_entry() {
+fn std_entry() {
     for _rep in 0..REP {
         let mut t = std::collections::BTreeMap::<usize, usize>::default();
         let n = N;
@@ -321,7 +322,7 @@ fn test_std_entry() {
 }
 
 #[test]
-fn test_exp_iter() {
+fn exp_iter() {
     let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();
     let n = N * 10;
     for i in 0..n {
@@ -335,7 +336,7 @@ fn test_exp_iter() {
 }
 
 #[test]
-fn test_std_iter() {
+fn std_iter() {
     let mut m = std::collections::BTreeMap::<usize, usize>::default();
     let n = N * 10;
     for i in 0..n {
@@ -349,7 +350,7 @@ fn test_std_iter() {
 }
 
 #[test]
-fn test_exp_into_iter() {
+fn exp_into_iter() {
     for _rep in 0..REP / 10 {
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();
         let n = N * 10;
@@ -363,7 +364,7 @@ fn test_exp_into_iter() {
 }
 
 #[test]
-fn test_std_into_iter() {
+fn std_into_iter() {
     for _rep in 0..REP / 10 {
         let mut m = std::collections::BTreeMap::<usize, usize>::default();
         let n = N * 10;

@@ -4,12 +4,15 @@ https://github.com/rust-lang/rust/blob/master/library/alloc/src/collections/btre
    Some could be restored if I ever find time.
 */
 
-use crate::Entry::*;
 use crate::*;
 
 use std::assert_matches::assert_matches;
+use std::borrow::Borrow;
+use std::cmp::Ordering;
 use std::fmt::Debug;
+use std::ops::Bound;
 use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::ops::RangeBounds;
 use std::rc::Rc;
 
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
