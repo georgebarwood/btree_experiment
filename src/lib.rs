@@ -23,7 +23,7 @@ mod vecs;
 pub use gb::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 
 /// Default B value ( this is capacity, usually B is defined as split!() = B/2 + 1 ).
-pub const DB: usize = 21;
+pub const DB: usize = 39;
 
 /// BTreeMap similar to [std::collections::BTreeMap].
 pub type BTreeMap<K, V> = gb::BTreeMap<K, V, DB>;
