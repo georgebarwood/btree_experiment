@@ -10,69 +10,69 @@
 #![cfg_attr(test, feature(btree_cursors, assert_matches))]
 
 /// Module with version of BTreeMap that allows B to be specified as generic constant.
-pub mod generic;
+pub mod gb;
 mod vecs;
 
 // Types for compatibility.
 
-pub use generic::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
+pub use gb::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 
 /// Default B value ( this is capacity, usually B is defined as split!() = B/2 + 1 ).
 pub const DB: usize = 39;
 
 /// BTreeMap similar to [std::collections::BTreeMap].
-pub type BTreeMap<K, V> = generic::BTreeMap<K, V, DB>;
+pub type BTreeMap<K, V> = gb::BTreeMap<K, V, DB>;
 
 /// Entry in BTreeMap, returned by [BTreeMap::entry].
-pub type Entry<'a, K, V> = generic::Entry<'a, K, V, DB>;
+pub type Entry<'a, K, V> = gb::Entry<'a, K, V, DB>;
 
 /// Consuming iterator returned by [BTreeMap::into_iter].
-pub type IntoIter<K, V> = generic::IntoIter<K, V, DB>;
+pub type IntoIter<K, V> = gb::IntoIter<K, V, DB>;
 
 /// Consuming iterator returned by [BTreeMap::into_keys].
-pub type IntoKeys<K, V> = generic::IntoKeys<K, V, DB>;
+pub type IntoKeys<K, V> = gb::IntoKeys<K, V, DB>;
 
 /// Consuming iterator returned by [BTreeMap::into_values].
-pub type IntoValues<K, V> = generic::IntoValues<K, V, DB>;
+pub type IntoValues<K, V> = gb::IntoValues<K, V, DB>;
 
 /// Iterator returned by [BTreeMap::iter_mut].
-pub type IterMut<'a, K, V> = generic::IterMut<'a, K, V, DB>;
+pub type IterMut<'a, K, V> = gb::IterMut<'a, K, V, DB>;
 
 /// Iterator returned by [BTreeMap::iter].
-pub type Iter<'a, K, V> = generic::Iter<'a, K, V, DB>;
+pub type Iter<'a, K, V> = gb::Iter<'a, K, V, DB>;
 
 /// Cursor returned by [BTreeMap::lower_bound], [BTreeMap::upper_bound].
-pub type Cursor<'a, K, V> = generic::Cursor<'a, K, V, DB>;
+pub type Cursor<'a, K, V> = gb::Cursor<'a, K, V, DB>;
 
 /// Cursor returned by [BTreeMap::lower_bound_mut], [BTreeMap::upper_bound_mut].
-pub type CursorMut<'a, K, V> = generic::CursorMut<'a, K, V, DB>;
+pub type CursorMut<'a, K, V> = gb::CursorMut<'a, K, V, DB>;
 
 /// Cursor returned by [CursorMut::with_mutable_key].
-pub type CursorMutKey<'a, K, V> = generic::CursorMutKey<'a, K, V, DB>;
+pub type CursorMutKey<'a, K, V> = gb::CursorMutKey<'a, K, V, DB>;
 
 /// Iterator returned by [BTreeMap::extract_if].
-pub type ExtractIf<'a, K, V, F> = generic::ExtractIf<'a, K, V, DB, F>;
+pub type ExtractIf<'a, K, V, F> = gb::ExtractIf<'a, K, V, DB, F>;
 
 /// Iterator returned by [BTreeMap::keys].
-pub type Keys<'a, K, V> = generic::Keys<'a, K, V, DB>;
+pub type Keys<'a, K, V> = gb::Keys<'a, K, V, DB>;
 
 /// Iterator returned by [BTreeMap::values].
-pub type Values<'a, K, V> = generic::Values<'a, K, V, DB>;
+pub type Values<'a, K, V> = gb::Values<'a, K, V, DB>;
 
 /// Iterator returned by [BTreeMap::range].
-pub type Range<'a, K, V> = generic::Range<'a, K, V, DB>;
+pub type Range<'a, K, V> = gb::Range<'a, K, V, DB>;
 
 /// Iterator returned by [BTreeMap::range_mut].
-pub type RangeMut<'a, K, V> = generic::RangeMut<'a, K, V, DB>;
+pub type RangeMut<'a, K, V> = gb::RangeMut<'a, K, V, DB>;
 
 /// Occupied [Entry].
-pub type OccupiedEntry<'a, K, V> = generic::OccupiedEntry<'a, K, V, DB>;
+pub type OccupiedEntry<'a, K, V> = gb::OccupiedEntry<'a, K, V, DB>;
 
 /// Vacant [Entry].
-pub type VacantEntry<'a, K, V> = generic::VacantEntry<'a, K, V, DB>;
+pub type VacantEntry<'a, K, V> = gb::VacantEntry<'a, K, V, DB>;
 
 /// Error returned by [BTreeMap::try_insert].
-pub type OccupiedError<'a, K, V> = generic::OccupiedError<'a, K, V, DB>;
+pub type OccupiedError<'a, K, V> = gb::OccupiedError<'a, K, V, DB>;
 
 // Tests.
 
