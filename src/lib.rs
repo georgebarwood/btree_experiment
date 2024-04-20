@@ -17,7 +17,7 @@ mod vecs;
 
 pub use generic::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 
-/// Default node capacity = 39( B is usually defined as half this number ).
+/// Default B value ( this is capacity, usually B is defined as split!() = B/2 + 1 ).
 pub const DB: usize = 39;
 
 /// BTreeMap similar to [std::collections::BTreeMap].
