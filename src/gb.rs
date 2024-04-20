@@ -16,7 +16,7 @@ type LeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
 type NonLeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
 type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>, B>;
 
-const AX: usize = 10; // Size for fixed ArrayVecs, 10 should probably be enough.
+const AX: usize = 15; // Size for fixed ArrayVecs.
 
 type PosVec = ArrayVec<u8, AX>;
 type StkMutVec<'a, K, V, const B: usize> = ArrayVec<StkMut<'a, K, V, B>, AX>;
@@ -59,8 +59,8 @@ where
     }
 }
 
-/// BTreeMap similar to [std::collections::BTreeMap] where B value can be specified.
-/// B should be an odd number, at least 11, a good value may be 39. Must be less than 256.
+/// BTreeMap similar to [std::collections::BTreeMap] where the node capacity (B) can be specified.
+/// B should be an odd number, at least 13, a good value may be 39. Must be less than 256.
 pub struct BTreeMap<K, V, const B: usize> {
     len: usize,
     tree: Tree<K, V, B>,

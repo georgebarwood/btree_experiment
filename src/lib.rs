@@ -1,6 +1,11 @@
-//! This crate implements a BTreeMap similar to [std::collections::BTreeMap].
+//! This crate implements a [BTreeMap] similar to [std::collections::BTreeMap].
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
+//!# Features
+//!
+//! This crate supports the following cargo features:
+//! - `serde` : enables serialisation of [BTreeMap] via serde crate.
+//! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
 // Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode
 // when the unsafe_optim feature is enabled, but are not declared as such to avoid littering
