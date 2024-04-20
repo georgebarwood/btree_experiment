@@ -12,9 +12,9 @@ use std::{
     ops::{Bound, RangeBounds},
 };
 
-type LeafVec<K, V, const B: usize> = FixedCapVec<B, (K, V)>;
-type NonLeafVec<K, V, const B: usize> = FixedCapVec<B, (K, V)>;
-type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<B, Tree<K, V, B>>;
+type LeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
+type NonLeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
+type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>, B>;
 
 const AX : usize = 10; // Size for fixed ArrayVecs, 10 should probably be enough.
 
@@ -1970,8 +1970,8 @@ impl<'a, K, V, const B: usize> FusedIterator for RangeMut<'a, K, V, B> {}
 // Consuming iteration.
 
 struct StkCon<K, V, const B: usize> {
-    v: FixedCapIter<B, (K, V)>,
-    c: FixedCapIter<B, Tree<K, V, B>>,
+    v: FixedCapIter<(K, V), B>,
+    c: FixedCapIter<Tree<K, V, B>, B>,
 }
 
 enum StealResultCon<K, V, const B: usize> {
@@ -2021,8 +2021,8 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoIter<K, V, B> {
 impl<K, V, const B: usize> FusedIterator for IntoIter<K, V, B> {}
 
 struct IntoIterInner<K, V, const B: usize> {
-    fwd_leaf: Option<FixedCapIter<B, (K, V)>>,
-    bck_leaf: Option<FixedCapIter<B, (K, V)>>,
+    fwd_leaf: Option<FixedCapIter<(K, V), B>>,
+    bck_leaf: Option<FixedCapIter<(K, V), B>>,
     fwd_stk: StkConVec<K, V, B>,
     bck_stk: StkConVec<K, V, B>,
 }

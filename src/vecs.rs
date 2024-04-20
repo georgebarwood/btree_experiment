@@ -145,12 +145,12 @@ macro_rules! safe_assert {
 }
 
 /// Vec with fixed capacity.
-pub(crate) struct FixedCapVec<const CAP: usize, T> {
+pub(crate) struct FixedCapVec<T, const CAP: usize> {
     len: usize,
     v: BasicVec<T>,
 }
 
-impl<const CAP: usize, T> FixedCapVec<CAP, T> {
+impl<T, const CAP: usize> FixedCapVec<T, CAP> {
     pub fn new() -> Self {
         let mut v = BasicVec::new();
         unsafe {
@@ -278,7 +278,7 @@ impl<const CAP: usize, T> FixedCapVec<CAP, T> {
     }
 }
 
-impl<const CAP: usize, T> Deref for FixedCapVec<CAP, T> {
+impl<T, const CAP: usize> Deref for FixedCapVec<T, CAP> {
     type Target = [T];
     #[inline]
     fn deref(&self) -> &[T] {
@@ -287,7 +287,7 @@ impl<const CAP: usize, T> Deref for FixedCapVec<CAP, T> {
     }
 }
 
-impl<const CAP: usize, T> DerefMut for FixedCapVec<CAP, T> {
+impl<T, const CAP: usize> DerefMut for FixedCapVec<T, CAP> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [T] {
         let len: usize = FixedCapVec::len(self);
@@ -295,13 +295,13 @@ impl<const CAP: usize, T> DerefMut for FixedCapVec<CAP, T> {
     }
 }
 
-impl<const CAP: usize, T> Default for FixedCapVec<CAP, T> {
+impl<T, const CAP: usize> Default for FixedCapVec<T, CAP> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const CAP: usize, T> Drop for FixedCapVec<CAP, T> {
+impl<T, const CAP: usize> Drop for FixedCapVec<T, CAP> {
     fn drop(&mut self) {
         let mut len = self.len;
         while len > 0 {
@@ -316,27 +316,27 @@ impl<const CAP: usize, T> Drop for FixedCapVec<CAP, T> {
     }
 }
 
-impl<const CAP: usize, T> IntoIterator for FixedCapVec<CAP, T> {
+impl<T, const CAP: usize> IntoIterator for FixedCapVec<T, CAP> {
     type Item = T;
-    type IntoIter = FixedCapIter<CAP, T>;
+    type IntoIter = FixedCapIter<T, CAP>;
 
     fn into_iter(self) -> Self::IntoIter {
         FixedCapIter { start: 0, v: self }
     }
 }
 
-pub(crate) struct FixedCapIter<const CAP: usize, T> {
+pub(crate) struct FixedCapIter<T, const CAP: usize> {
     start: usize,
-    v: FixedCapVec<CAP, T>,
+    v: FixedCapVec<T, CAP>,
 }
 
-impl<const CAP: usize, T> FixedCapIter<CAP, T> {
+impl<T, const CAP: usize> FixedCapIter<T, CAP> {
     pub fn len(&self) -> usize {
         self.v.len - self.start
     }
 }
 
-impl<const CAP: usize, T> Iterator for FixedCapIter<CAP, T> {
+impl<T, const CAP: usize> Iterator for FixedCapIter<T, CAP> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len {
@@ -348,7 +348,7 @@ impl<const CAP: usize, T> Iterator for FixedCapIter<CAP, T> {
         }
     }
 }
-impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIter<CAP, T> {
+impl<T, const CAP: usize> DoubleEndedIterator for FixedCapIter<T, CAP> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len {
             None
@@ -358,7 +358,7 @@ impl<const CAP: usize, T> DoubleEndedIterator for FixedCapIter<CAP, T> {
         }
     }
 }
-impl<const CAP: usize, T> Drop for FixedCapIter<CAP, T> {
+impl<T, const CAP: usize> Drop for FixedCapIter<T, CAP> {
     fn drop(&mut self) {
         while self.len() > 0 {
             self.next();
