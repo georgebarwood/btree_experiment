@@ -9,7 +9,7 @@
 #![deny(missing_docs)]
 #![cfg_attr(test, feature(btree_cursors, assert_matches))]
 
-/// Module with version of BTreeMap that allows B to specified as generic constant.
+/// Module with version of BTreeMap that allows B to be specified as generic constant.
 pub mod generic;
 mod vecs;
 
@@ -17,8 +17,8 @@ mod vecs;
 
 pub use generic::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 
-/// Default node capacity = 41( B is usually defined as half this number ).
-pub const DB: usize = 41;
+/// Default node capacity = 39( B is usually defined as half this number ).
+pub const DB: usize = 39;
 
 /// BTreeMap similar to [std::collections::BTreeMap].
 pub type BTreeMap<K, V> = generic::BTreeMap<K, V, DB>;
@@ -74,8 +74,6 @@ pub type VacantEntry<'a, K, V> = generic::VacantEntry<'a, K, V, DB>;
 /// Error returned by [BTreeMap::try_insert].
 pub type OccupiedError<'a, K, V> = generic::OccupiedError<'a, K, V, DB>;
 
-
-
 // Tests.
 
 /* mimalloc cannot be used with miri */
@@ -91,4 +89,3 @@ mod mytests;
 
 #[cfg(test)]
 mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
-

@@ -2,17 +2,6 @@
 use crate::vecs;
 use arrayvec::ArrayVec;
 use vecs::{FixedCapIter, FixedCapVec};
-type LeafVec<K, V, const B: usize> = FixedCapVec<B, (K, V)>;
-type NonLeafVec<K, V, const B: usize> = FixedCapVec<B, (K, V)>;
-type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<B, Tree<K, V, B>>;
-
-type PosVec = ArrayVec<u8, 10>;
-type StkMutVec<'a, K, V, const B: usize> = ArrayVec<StkMut<'a, K, V, B>, 10>;
-type StkConVec<K, V, const B: usize> = ArrayVec<StkCon<K, V, B>, 10>;
-type StkVec<'a, K, V, const B: usize> = ArrayVec<Stk<'a, K, V, B>, 10>;
-
-type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
-
 use std::{
     borrow::Borrow,
     cmp::Ordering,
@@ -22,6 +11,25 @@ use std::{
     marker::PhantomData,
     ops::{Bound, RangeBounds},
 };
+
+type LeafVec<K, V, const B: usize> = FixedCapVec<B, (K, V)>;
+type NonLeafVec<K, V, const B: usize> = FixedCapVec<B, (K, V)>;
+type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<B, Tree<K, V, B>>;
+
+const AX : usize = 10; // Size for fixed ArrayVecs, 10 should probably be enough.
+
+type PosVec = ArrayVec<u8, AX>;
+type StkMutVec<'a, K, V, const B: usize> = ArrayVec<StkMut<'a, K, V, B>, AX>;
+type StkConVec<K, V, const B: usize> = ArrayVec<StkCon<K, V, B>, AX>;
+type StkVec<'a, K, V, const B: usize> = ArrayVec<Stk<'a, K, V, B>, AX>;
+
+type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
+
+macro_rules! split {
+    () => {
+        B / 2 + 1
+    };
+}
 
 fn check_range<T, R>(range: &R)
 where
@@ -58,6 +66,7 @@ where
 }
 
 /// BTreeMap similar to [std::collections::BTreeMap] where B value can be specified.
+/// B should be an odd number, at least 11, a good value may be 39.
 pub struct BTreeMap<K, V, const B: usize> {
     len: usize,
     tree: Tree<K, V, B>,
@@ -634,7 +643,7 @@ impl<K, V, const B: usize> BTreeMapVisitor<K, V, B> {
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, V, B> Visitor<'de> for BTreeMapVisitor<K, V, B>
+impl<'de, K, V, const B: usize> Visitor<'de> for BTreeMapVisitor<K, V, B>
 where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,
@@ -665,7 +674,7 @@ where
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, V, B> Deserialize<'de> for BTreeMap<K, V, B>
+impl<'de, K, V, const B: usize> Deserialize<'de> for BTreeMap<K, V, B>
 where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,
@@ -953,7 +962,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     }
 
     fn split(&mut self) -> ((K, V), LeafVec<K, V, B>) {
-        let right = self.0.split_off(B / 2);
+        let right = self.0.split_off(split!());
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -973,8 +982,8 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         let value = x.value.take().unwrap();
         if self.full() {
             let (med, mut right) = self.split();
-            if i >= (B / 2) {
-                i -= B / 2;
+            if i >= (split!()) {
+                i -= split!();
                 right.insert(i, (key, value));
             } else {
                 self.0.insert(i, (key, value));
@@ -993,8 +1002,8 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
             level += 1;
             pos.insert(0, 0);
         }
-        if pos[level] >= (B / 2) as u8 {
-            pos[level] -= (B / 2) as u8;
+        if pos[level] >= split!() as u8 {
+            pos[level] -= split!() as u8;
             pos[level - 1] += 1;
         }
         let (med, right) = self.split();
@@ -1208,8 +1217,8 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
 
     fn split(&mut self) -> Split<K, V, B> {
         let right = Self {
-            v: self.v.split_off(B / 2),
-            c: self.c.split_off(B / 2),
+            v: self.v.split_off(split!()),
+            c: self.c.split_off(split!()),
         };
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
@@ -1248,8 +1257,8 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
                 pos.insert(0, 0);
                 level += 1;
             }
-            if pos[level] >= (B / 2) as u8 {
-                pos[level] -= (B / 2) as u8;
+            if pos[level] >= split!() as u8 {
+                pos[level] -= split!() as u8;
                 pos[level - 1] += 1;
             }
             Some(self.split())
@@ -2860,8 +2869,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             if (*leaf).full() {
                 let (med, right) = (*leaf).split();
                 let right = Tree::L(Leaf(right));
-                let r = if self.index >= (B / 2) { 1 } else { 0 };
-                self.index -= r * (B / 2);
+                let r = if self.index >= split!() { 1 } else { 0 };
+                self.index -= r * split!();
                 let t = self.split(med, right, r);
                 leaf = (*t).leaf();
                 self.leaf = Some(leaf);
@@ -2875,8 +2884,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             if let Some((mut nl, mut ix)) = self.stack.pop() {
                 if (*nl).full() {
                     let (med, tree) = (*nl).split();
-                    let r = if ix >= (B / 2) { 1 } else { 0 };
-                    ix -= r * (B / 2);
+                    let r = if ix >= split!() { 1 } else { 0 };
+                    ix -= r * split!();
                     let t = self.split(med, tree, r);
                     nl = (*t).nonleaf();
                 }
