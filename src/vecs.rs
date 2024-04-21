@@ -2,6 +2,7 @@ use std::{
     alloc,
     alloc::Layout,
     cmp::Ordering,
+    fmt,
     mem,
     ops::{Deref, DerefMut},
     ptr,
@@ -322,6 +323,12 @@ impl<T, const CAP: usize> IntoIterator for FixedCapVec<T, CAP> {
 
     fn into_iter(self) -> Self::IntoIter {
         FixedCapIter { start: 0, v: self }
+    }
+}
+
+impl<T, const CAP: usize> fmt::Debug for FixedCapVec<T, CAP> where T: fmt::Debug {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
     }
 }
 

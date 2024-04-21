@@ -5,6 +5,39 @@ const REP: usize = if cfg!(miri) { 10 } else { 1000 };
 const N: usize = if cfg!(miri) { 1000 } else { 10000 };
 
 #[test]
+fn exp_clone_test() {
+    let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
+    let mut c = m.lower_bound_mut(Bound::Unbounded);
+    let n = N;
+    for i in 0..n {
+        c.insert_before(i, i).unwrap();
+    }
+    assert!(m.len() == n);
+
+    for _rep in 0..REP {
+        let cm = m.clone();
+        assert!(cm.len() == n);
+    }
+}
+
+
+#[test]
+fn std_clone_test() {
+    let mut m = std::collections:: BTreeMap::<usize, usize>::new();
+    let mut c = m.lower_bound_mut(Bound::Unbounded);
+    let n = N;
+    for i in 0..n {
+        c.insert_before(i, i).unwrap();
+    }
+    assert!(m.len() == n);
+
+    for _rep in 0..REP {
+        let cm = m.clone();
+        assert!(cm.len() == n);
+    }
+}
+
+#[test]
 fn exp_split_off_test() {
     for _rep in 0..REP {
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();

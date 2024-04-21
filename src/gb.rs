@@ -665,6 +665,7 @@ struct InsertCtx<K, V, const B: usize> {
     split: Option<Split<K, V, B>>,
 }
 
+#[derive(Debug)]
 enum Tree<K, V, const B: usize> {
     L(Leaf<K, V, B>),
     NL(NonLeaf<K, V, B>),
@@ -867,6 +868,7 @@ impl<K, V, const B: usize> Tree<K, V, B> {
     }
 } // End impl Tree
 
+#[derive(Debug)]
 struct Leaf<K, V, const B: usize>(LeafVec<K, V, B>);
 impl<K, V, const B: usize> Leaf<K, V, B> {
     fn full(&self) -> bool {
@@ -1039,6 +1041,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     }
 } // End impl Leaf
 
+#[derive(Debug)]
 struct NonLeaf<K, V, const B: usize> {
     v: NonLeafVec<K, V, B>,
     c: NonLeafChildVec<K, V, B>,
@@ -1456,6 +1459,7 @@ enum StealResultMut<'a, K, V, const B: usize> {
 }
 
 /// Iterator returned by [BTreeMap::iter_mut].
+#[derive(Debug,Default)]
 pub struct IterMut<'a, K, V, const B: usize> {
     len: usize,
     inner: RangeMut<'a, K, V, B>,
@@ -1491,12 +1495,14 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for IterMut<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for IterMut<'a, K, V, B> {}
 
+#[derive(Debug)]
 struct StkMut<'a, K, V, const B: usize> {
     v: std::slice::IterMut<'a, (K, V)>,
     c: std::slice::IterMut<'a, Tree<K, V, B>>,
 }
 
 /// Iterator returned by [BTreeMap::range_mut].
+#[derive(Debug,Default)]
 pub struct RangeMut<'a, K, V, const B: usize> {
     /* There are two iterations going on to implement DoubleEndedIterator.
        fwd_leaf and fwd_stk are initially used for forward (next) iteration,
@@ -1740,7 +1746,6 @@ impl<K, V, const B: usize> IntoIter<K, V, B> {
         s
     }
 }
-
 impl<K, V, const B: usize> Iterator for IntoIter<K, V, B> {
     type Item = (K, V);
     fn next(&mut self) -> Option<Self::Item> {
@@ -1761,6 +1766,11 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoIter<K, V, B> {
             self.len -= 1;
         }
         result
+    }
+}
+impl<K, V, const B: usize> ExactSizeIterator for IntoIter<K, V, B> {
+    fn len(&self) -> usize {
+        self.len
     }
 }
 impl<K, V, const B: usize> FusedIterator for IntoIter<K, V, B> {}
@@ -1940,6 +1950,7 @@ enum StealResult<'a, K, V, const B: usize> {
 }
 
 /// Iterator returned by [BTreeMap::iter].
+#[derive(Clone,Debug,Default)]
 pub struct Iter<'a, K, V, const B: usize> {
     len: usize,
     inner: Range<'a, K, V, B>,
@@ -1975,12 +1986,14 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Iter<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for Iter<'a, K, V, B> {}
 
+#[derive(Clone,Debug)]
 struct Stk<'a, K, V, const B: usize> {
     v: std::slice::Iter<'a, (K, V)>,
     c: std::slice::Iter<'a, Tree<K, V, B>>,
 }
 
 /// Iterator returned by [BTreeMap::range].
+#[derive(Clone,Debug,Default)]
 pub struct Range<'a, K, V, const B: usize> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
     bck_leaf: Option<IterLeaf<'a, K, V>>,
@@ -2211,6 +2224,11 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoKeys<K, V, B> {
         Some(self.0.next_back()?.0)
     }
 }
+impl<K, V, const B: usize> ExactSizeIterator for IntoKeys<K, V, B> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 impl<K, V, const B: usize> FusedIterator for IntoKeys<K, V, B> {}
 
 /// Consuming iterator returned by [BTreeMap::into_values].
@@ -2230,10 +2248,16 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoValues<K, V, B> {
         Some(self.0.next_back()?.1)
     }
 }
+impl<K, V, const B: usize> ExactSizeIterator for IntoValues<K, V, B> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 impl<K, V, const B: usize> FusedIterator for IntoValues<K, V, B> {}
 
 // Leaf iterators.
 
+#[derive(Debug)]
 struct IterLeafMut<'a, K, V>(std::slice::IterMut<'a, (K, V)>);
 impl<'a, K, V> Iterator for IterLeafMut<'a, K, V> {
     type Item = (&'a K, &'a mut V);
@@ -2249,6 +2273,7 @@ impl<'a, K, V> DoubleEndedIterator for IterLeafMut<'a, K, V> {
     }
 }
 
+#[derive(Clone,Debug)]
 struct IterLeaf<'a, K, V>(std::slice::Iter<'a, (K, V)>);
 impl<'a, K, V> Iterator for IterLeaf<'a, K, V> {
     type Item = (&'a K, &'a V);
@@ -2282,6 +2307,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for ValuesMut<'a, K, V, B> {
 impl<'a, K, V, const B: usize> FusedIterator for ValuesMut<'a, K, V, B> {}
 
 /// Iterator returned by [BTreeMap::values].
+#[derive(Clone,Default)]
 pub struct Values<'a, K, V, const B: usize>(Iter<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for Values<'a, K, V, B> {
     type Item = &'a V;
@@ -2297,6 +2323,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Values<'a, K, V, B> {
 impl<'a, K, V, const B: usize> FusedIterator for Values<'a, K, V, B> {}
 
 /// Iterator returned by [BTreeMap::keys].
+#[derive(Clone,Default)]
 pub struct Keys<'a, K, V, const B: usize>(Iter<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for Keys<'a, K, V, B> {
     type Item = &'a K;
@@ -2307,6 +2334,11 @@ impl<'a, K, V, const B: usize> Iterator for Keys<'a, K, V, B> {
 impl<'a, K, V, const B: usize> DoubleEndedIterator for Keys<'a, K, V, B> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(k, _)| k)
+    }
+}
+impl<'a, K, V, const B: usize> ExactSizeIterator for Keys<'a, K, V, B> {
+    fn len(&self) -> usize {
+        self.0.len()
     }
 }
 impl<'a, K, V, const B: usize> FusedIterator for Keys<'a, K, V, B> {}
