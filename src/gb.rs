@@ -1459,7 +1459,7 @@ enum StealResultMut<'a, K, V, const B: usize> {
 }
 
 /// Iterator returned by [BTreeMap::iter_mut].
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct IterMut<'a, K, V, const B: usize> {
     len: usize,
     inner: RangeMut<'a, K, V, B>,
@@ -1502,7 +1502,7 @@ struct StkMut<'a, K, V, const B: usize> {
 }
 
 /// Iterator returned by [BTreeMap::range_mut].
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct RangeMut<'a, K, V, const B: usize> {
     /* There are two iterations going on to implement DoubleEndedIterator.
        fwd_leaf and fwd_stk are initially used for forward (next) iteration,
@@ -1525,11 +1525,11 @@ impl<'a, K, V, const B: usize> RangeMut<'a, K, V, B> {
     }
     fn push_tree(&mut self, tree: &'a mut Tree<K, V, B>, both: bool) {
         match tree {
-            Tree::L(x) => {
-                self.fwd_leaf = Some(x.iter_mut());
+            Tree::L(leaf) => {
+                self.fwd_leaf = Some(leaf.iter_mut());
             }
-            Tree::NL(x) => {
-                let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
+            Tree::NL(nl) => {
+                let (v, mut c) = (nl.v.iter_mut(), nl.c.iter_mut());
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -1554,9 +1554,9 @@ impl<'a, K, V, const B: usize> RangeMut<'a, K, V, B> {
                 let (x, y) = leaf.get_xy(range);
                 self.fwd_leaf = Some(IterLeafMut(leaf.0[x..y].iter_mut()));
             }
-            Tree::NL(t) => {
-                let (x, y) = t.get_xy(range);
-                let (v, mut c) = (t.v[x..y].iter_mut(), t.c[x..y + 1].iter_mut());
+            Tree::NL(nl) => {
+                let (x, y) = nl.get_xy(range);
+                let (v, mut c) = (nl.v[x..y].iter_mut(), nl.c[x..y + 1].iter_mut());
 
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
@@ -1598,11 +1598,11 @@ impl<'a, K, V, const B: usize> RangeMut<'a, K, V, B> {
     }
     fn push_tree_back(&mut self, tree: &'a mut Tree<K, V, B>) {
         match tree {
-            Tree::L(x) => {
-                self.bck_leaf = Some(x.iter_mut());
+            Tree::L(leaf) => {
+                self.bck_leaf = Some(leaf.iter_mut());
             }
-            Tree::NL(x) => {
-                let (v, mut c) = (x.v.iter_mut(), x.c.iter_mut());
+            Tree::NL(nl) => {
+                let (v, mut c) = (nl.v.iter_mut(), nl.c.iter_mut());
                 let ct_back = c.next_back();
                 self.bck_stk.push(StkMut { v, c });
                 if let Some(ct_back) = ct_back {
@@ -1797,11 +1797,11 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     }
     fn push_tree(&mut self, tree: Tree<K, V, B>, both: bool) {
         match tree {
-            Tree::L(x) => {
-                self.fwd_leaf = Some(x.0.into_iter());
+            Tree::L(leaf) => {
+                self.fwd_leaf = Some(leaf.0.into_iter());
             }
-            Tree::NL(x) => {
-                let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
+            Tree::NL(nl) => {
+                let (v, mut c) = (nl.v.into_iter(), nl.c.into_iter());
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -1817,11 +1817,11 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     }
     fn push_tree_back(&mut self, tree: Tree<K, V, B>) {
         match tree {
-            Tree::L(x) => {
-                self.bck_leaf = Some(x.0.into_iter());
+            Tree::L(leaf) => {
+                self.bck_leaf = Some(leaf.0.into_iter());
             }
-            Tree::NL(x) => {
-                let (v, mut c) = (x.v.into_iter(), x.c.into_iter());
+            Tree::NL(nl) => {
+                let (v, mut c) = (nl.v.into_iter(), nl.c.into_iter());
                 let ct_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
                 if let Some(ct_back) = ct_back {
@@ -1950,7 +1950,7 @@ enum StealResult<'a, K, V, const B: usize> {
 }
 
 /// Iterator returned by [BTreeMap::iter].
-#[derive(Clone,Debug,Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Iter<'a, K, V, const B: usize> {
     len: usize,
     inner: Range<'a, K, V, B>,
@@ -1986,14 +1986,14 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Iter<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for Iter<'a, K, V, B> {}
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 struct Stk<'a, K, V, const B: usize> {
     v: std::slice::Iter<'a, (K, V)>,
     c: std::slice::Iter<'a, Tree<K, V, B>>,
 }
 
 /// Iterator returned by [BTreeMap::range].
-#[derive(Clone,Debug,Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Range<'a, K, V, const B: usize> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
     bck_leaf: Option<IterLeaf<'a, K, V>>,
@@ -2011,11 +2011,11 @@ impl<'a, K, V, const B: usize> Range<'a, K, V, B> {
     }
     fn push_tree(&mut self, tree: &'a Tree<K, V, B>, both: bool) {
         match tree {
-            Tree::L(x) => {
-                self.fwd_leaf = Some(x.iter());
+            Tree::L(leaf) => {
+                self.fwd_leaf = Some(leaf.iter());
             }
-            Tree::NL(x) => {
-                let (v, mut c) = (x.v.iter(), x.c.iter());
+            Tree::NL(nl) => {
+                let (v, mut c) = (nl.v.iter(), nl.c.iter());
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -2082,11 +2082,11 @@ impl<'a, K, V, const B: usize> Range<'a, K, V, B> {
     }
     fn push_tree_back(&mut self, tree: &'a Tree<K, V, B>) {
         match tree {
-            Tree::L(x) => {
-                self.bck_leaf = Some(x.iter());
+            Tree::L(leaf) => {
+                self.bck_leaf = Some(leaf.iter());
             }
-            Tree::NL(x) => {
-                let (v, mut c) = (x.v.iter(), x.c.iter());
+            Tree::NL(nl) => {
+                let (v, mut c) = (nl.v.iter(), nl.c.iter());
                 let ct_back = c.next_back();
                 self.bck_stk.push(Stk { v, c });
                 if let Some(ct_back) = ct_back {
@@ -2273,7 +2273,7 @@ impl<'a, K, V> DoubleEndedIterator for IterLeafMut<'a, K, V> {
     }
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 struct IterLeaf<'a, K, V>(std::slice::Iter<'a, (K, V)>);
 impl<'a, K, V> Iterator for IterLeaf<'a, K, V> {
     type Item = (&'a K, &'a V);
@@ -2307,7 +2307,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for ValuesMut<'a, K, V, B> {
 impl<'a, K, V, const B: usize> FusedIterator for ValuesMut<'a, K, V, B> {}
 
 /// Iterator returned by [BTreeMap::values].
-#[derive(Clone,Default)]
+#[derive(Clone, Default)]
 pub struct Values<'a, K, V, const B: usize>(Iter<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for Values<'a, K, V, B> {
     type Item = &'a V;
@@ -2323,7 +2323,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Values<'a, K, V, B> {
 impl<'a, K, V, const B: usize> FusedIterator for Values<'a, K, V, B> {}
 
 /// Iterator returned by [BTreeMap::keys].
-#[derive(Clone,Default)]
+#[derive(Clone, Default)]
 pub struct Keys<'a, K, V, const B: usize>(Iter<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for Keys<'a, K, V, B> {
     type Item = &'a K;
@@ -2502,6 +2502,7 @@ impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
         self.0.as_cursor()
     }
 
+    /// This is needed for the implementation of the [Entry] API.
     fn into_mut(self) -> &'a mut V {
         self.0.into_mut()
     }
@@ -2540,10 +2541,10 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                 self.index = leaf.get_lower(bound);
                 self.leaf = Some(leaf);
             }
-            Tree::NL(x) => {
-                let ix = x.get_lower(bound);
-                self.stack.push((x, ix));
-                self.push_lower(x.c.ixm(ix), bound);
+            Tree::NL(nl) => {
+                let ix = nl.get_lower(bound);
+                self.stack.push((nl, ix));
+                self.push_lower(nl.c.ixm(ix), bound);
             }
         }
     }
@@ -2558,10 +2559,10 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                 self.index = leaf.get_upper(bound);
                 self.leaf = Some(leaf);
             }
-            Tree::NL(x) => {
-                let ix = x.get_upper(bound);
-                self.stack.push((x, ix));
-                self.push_upper(x.c.ixm(ix), bound);
+            Tree::NL(nl) => {
+                let ix = nl.get_upper(bound);
+                self.stack.push((nl, ix));
+                self.push_upper(nl.c.ixm(ix), bound);
             }
         }
     }
@@ -2572,9 +2573,9 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                 self.index = 0;
                 self.leaf = Some(leaf);
             }
-            Tree::NL(x) => {
-                self.stack.push((x, 0));
-                self.push(x.c.ixm(0));
+            Tree::NL(nl) => {
+                self.stack.push((nl, 0));
+                self.push(nl.c.ixm(0));
             }
         }
     }
@@ -2585,10 +2586,10 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                 self.index = leaf.0.len();
                 self.leaf = Some(leaf);
             }
-            Tree::NL(x) => {
-                let ix = x.v.len();
-                self.stack.push((x, ix));
-                self.push_back(x.c.ixm(ix));
+            Tree::NL(nl) => {
+                let ix = nl.v.len();
+                self.stack.push((nl, ix));
+                self.push_back(nl.c.ixm(ix));
             }
         }
     }
@@ -2821,6 +2822,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
         }
     }
 
+    /// This is needed for the implementation of the [Entry] API.
     fn into_mut(self) -> &'a mut V {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
@@ -2916,9 +2918,9 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
                 self.leaf = Some(leaf);
                 self.index = 0;
             }
-            Tree::NL(x) => {
-                self.stack.push((x, 0));
-                let c = &x.c[0];
+            Tree::NL(nl) => {
+                self.stack.push((nl, 0));
+                let c = &nl.c[0];
                 self.push(c);
             }
         }
@@ -2930,10 +2932,10 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
                 self.leaf = Some(leaf);
                 self.index = leaf.0.len();
             }
-            Tree::NL(x) => {
-                let ix = x.v.len();
-                self.stack.push((x, ix));
-                let c = &x.c[ix];
+            Tree::NL(nl) => {
+                let ix = nl.v.len();
+                self.stack.push((nl, ix));
+                let c = &nl.c[ix];
                 self.push_back(c);
             }
         }

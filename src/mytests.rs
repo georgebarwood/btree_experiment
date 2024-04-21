@@ -20,10 +20,9 @@ fn exp_clone_test() {
     }
 }
 
-
 #[test]
 fn std_clone_test() {
-    let mut m = std::collections:: BTreeMap::<usize, usize>::new();
+    let mut m = std::collections::BTreeMap::<usize, usize>::new();
     let mut c = m.lower_bound_mut(Bound::Unbounded);
     let n = N;
     for i in 0..n {

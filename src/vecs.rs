@@ -2,8 +2,7 @@ use std::{
     alloc,
     alloc::Layout,
     cmp::Ordering,
-    fmt,
-    mem,
+    fmt, mem,
     ops::{Deref, DerefMut},
     ptr,
     ptr::NonNull,
@@ -326,7 +325,10 @@ impl<T, const CAP: usize> IntoIterator for FixedCapVec<T, CAP> {
     }
 }
 
-impl<T, const CAP: usize> fmt::Debug for FixedCapVec<T, CAP> where T: fmt::Debug {
+impl<T, const CAP: usize> fmt::Debug for FixedCapVec<T, CAP>
+where
+    T: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
@@ -335,12 +337,6 @@ impl<T, const CAP: usize> fmt::Debug for FixedCapVec<T, CAP> where T: fmt::Debug
 pub(crate) struct FixedCapIter<T, const CAP: usize> {
     start: usize,
     v: FixedCapVec<T, CAP>,
-}
-
-impl<T, const CAP: usize> FixedCapIter<T, CAP> {
-    pub fn len(&self) -> usize {
-        self.v.len - self.start
-    }
 }
 
 impl<T, const CAP: usize> Iterator for FixedCapIter<T, CAP> {
@@ -371,5 +367,10 @@ impl<T, const CAP: usize> Drop for FixedCapIter<T, CAP> {
             self.next();
         }
         self.v.len = 0;
+    }
+}
+impl<T, const CAP: usize> ExactSizeIterator for FixedCapIter<T, CAP> {
+    fn len(&self) -> usize {
+        self.v.len - self.start
     }
 }
