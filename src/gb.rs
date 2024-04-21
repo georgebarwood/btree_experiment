@@ -1,6 +1,3 @@
-// Vector types.
-use crate::vecs;
-use arrayvec::ArrayVec;
 use std::{
     borrow::Borrow,
     cmp::Ordering,
@@ -10,17 +7,14 @@ use std::{
     marker::PhantomData,
     ops::{Bound, RangeBounds},
 };
-use vecs::{FixedCapIter, FixedCapVec};
 
+// Vector types.
+type StkVec<T> = arrayvec::ArrayVec<T, 15>;
+
+use crate::vecs::{FixedCapIter, FixedCapVec};
 type LeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
 type NonLeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
 type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>, B>;
-
-const AX: usize = 15; // Size for fixed ArrayVecs.
-
-type StkMutVec<'a, K, V, const B: usize> = ArrayVec<StkMut<'a, K, V, B>, AX>;
-type StkConVec<K, V, const B: usize> = ArrayVec<StkCon<K, V, B>, AX>;
-type StkVec<'a, K, V, const B: usize> = ArrayVec<Stk<'a, K, V, B>, AX>;
 
 type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
 
@@ -59,7 +53,7 @@ where
 }
 
 /// BTreeMap similar to [std::collections::BTreeMap] where the node capacity (B) can be specified.
-/// B should be an odd number, at least 13, a good value may be 39. Must be less than 256.
+/// B should be an odd number, at least 11, a good value may be 39.
 pub struct BTreeMap<K, V, const B: usize> {
     len: usize,
     tree: Tree<K, V, B>,
@@ -73,8 +67,9 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     #[cfg(test)]
     pub(crate) fn check(&self) {}
 
+    /// This should produce a compile-time error if B is too small.
     const CHECK_B: usize = {
-        assert!(B >= 13 && B <= 255);
+        assert!(B >= 11);
         0
     };
 
@@ -504,8 +499,11 @@ where
 {
     fn clone(&self) -> BTreeMap<K, V, B> {
         let mut map = BTreeMap::new();
+        let mut c = map.lower_bound_mut(Bound::Unbounded);
         for (k, v) in self.iter() {
-            map.insert(k.clone(), v.clone());
+            unsafe {
+                c.insert_before_unchecked(k.clone(), v.clone());
+            }
         }
         map
     }
@@ -660,6 +658,11 @@ where
     {
         deserializer.deserialize_map(BTreeMapVisitor::new())
     }
+}
+
+struct InsertCtx<K, V, const B: usize> {
+    value: Option<V>,
+    split: Option<Split<K, V, B>>,
 }
 
 enum Tree<K, V, const B: usize> {
@@ -863,11 +866,6 @@ impl<K, V, const B: usize> Tree<K, V, B> {
         false
     }
 } // End impl Tree
-
-struct InsertCtx<K, V, const B: usize> {
-    value: Option<V>,
-    split: Option<Split<K, V, B>>,
-}
 
 struct Leaf<K, V, const B: usize>(LeafVec<K, V, B>);
 impl<K, V, const B: usize> Leaf<K, V, B> {
@@ -1451,11 +1449,6 @@ where
 
 // Mutable reference iteration.
 
-struct StkMut<'a, K, V, const B: usize> {
-    v: std::slice::IterMut<'a, (K, V)>,
-    c: std::slice::IterMut<'a, Tree<K, V, B>>,
-}
-
 enum StealResultMut<'a, K, V, const B: usize> {
     KV((&'a K, &'a mut V)),    // Key-value pair.
     CT(&'a mut Tree<K, V, B>), // Child Tree.
@@ -1498,6 +1491,11 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for IterMut<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for IterMut<'a, K, V, B> {}
 
+struct StkMut<'a, K, V, const B: usize> {
+    v: std::slice::IterMut<'a, (K, V)>,
+    c: std::slice::IterMut<'a, Tree<K, V, B>>,
+}
+
 /// Iterator returned by [BTreeMap::range_mut].
 pub struct RangeMut<'a, K, V, const B: usize> {
     /* There are two iterations going on to implement DoubleEndedIterator.
@@ -1507,16 +1505,16 @@ pub struct RangeMut<'a, K, V, const B: usize> {
     */
     fwd_leaf: Option<IterLeafMut<'a, K, V>>,
     bck_leaf: Option<IterLeafMut<'a, K, V>>,
-    fwd_stk: StkMutVec<'a, K, V, B>,
-    bck_stk: StkMutVec<'a, K, V, B>,
+    fwd_stk: StkVec<StkMut<'a, K, V, B>>,
+    bck_stk: StkVec<StkMut<'a, K, V, B>>,
 }
 impl<'a, K, V, const B: usize> RangeMut<'a, K, V, B> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
             bck_leaf: None,
-            fwd_stk: StkMutVec::new(),
-            bck_stk: StkMutVec::new(),
+            fwd_stk: StkVec::new(),
+            bck_stk: StkVec::new(),
         }
     }
     fn push_tree(&mut self, tree: &'a mut Tree<K, V, B>, both: bool) {
@@ -1721,11 +1719,6 @@ impl<'a, K, V, const B: usize> FusedIterator for RangeMut<'a, K, V, B> {}
 
 // Consuming iteration.
 
-struct StkCon<K, V, const B: usize> {
-    v: FixedCapIter<(K, V), B>,
-    c: FixedCapIter<Tree<K, V, B>, B>,
-}
-
 enum StealResultCon<K, V, const B: usize> {
     KV((K, V)),        // Key-value pair.
     CT(Tree<K, V, B>), // Child Tree.
@@ -1772,19 +1765,24 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoIter<K, V, B> {
 }
 impl<K, V, const B: usize> FusedIterator for IntoIter<K, V, B> {}
 
+struct StkCon<K, V, const B: usize> {
+    v: FixedCapIter<(K, V), B>,
+    c: FixedCapIter<Tree<K, V, B>, B>,
+}
+
 struct IntoIterInner<K, V, const B: usize> {
     fwd_leaf: Option<FixedCapIter<(K, V), B>>,
     bck_leaf: Option<FixedCapIter<(K, V), B>>,
-    fwd_stk: StkConVec<K, V, B>,
-    bck_stk: StkConVec<K, V, B>,
+    fwd_stk: StkVec<StkCon<K, V, B>>,
+    bck_stk: StkVec<StkCon<K, V, B>>,
 }
 impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn new() -> Self {
         Self {
             fwd_leaf: None,
             bck_leaf: None,
-            fwd_stk: StkConVec::new(),
-            bck_stk: StkConVec::new(),
+            fwd_stk: StkVec::new(),
+            bck_stk: StkVec::new(),
         }
     }
     fn push_tree(&mut self, tree: Tree<K, V, B>, both: bool) {
@@ -1935,11 +1933,6 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoIterInner<K, V, B> {
 
 // Immutable reference iteration.
 
-struct Stk<'a, K, V, const B: usize> {
-    v: std::slice::Iter<'a, (K, V)>,
-    c: std::slice::Iter<'a, Tree<K, V, B>>,
-}
-
 enum StealResult<'a, K, V, const B: usize> {
     KV((&'a K, &'a V)),    // Key-value pair.
     CT(&'a Tree<K, V, B>), // Child Tree.
@@ -1982,12 +1975,17 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Iter<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for Iter<'a, K, V, B> {}
 
+struct Stk<'a, K, V, const B: usize> {
+    v: std::slice::Iter<'a, (K, V)>,
+    c: std::slice::Iter<'a, Tree<K, V, B>>,
+}
+
 /// Iterator returned by [BTreeMap::range].
 pub struct Range<'a, K, V, const B: usize> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
     bck_leaf: Option<IterLeaf<'a, K, V>>,
-    fwd_stk: StkVec<'a, K, V, B>,
-    bck_stk: StkVec<'a, K, V, B>,
+    fwd_stk: StkVec<Stk<'a, K, V, B>>,
+    bck_stk: StkVec<Stk<'a, K, V, B>>,
 }
 impl<'a, K, V, const B: usize> Range<'a, K, V, B> {
     fn new() -> Self {
@@ -2364,7 +2362,7 @@ pub struct UnorderedKeyError {}
 /// Cursor that allows mutation of map, returned by [BTreeMap::lower_bound_mut], [BTreeMap::upper_bound_mut].
 pub struct CursorMut<'a, K, V, const B: usize>(CursorMutKey<'a, K, V, B>);
 impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
-    fn lower_bound<Q>(map: &mut BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
+    fn lower_bound<Q>(map: &'a mut BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2379,7 +2377,7 @@ impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
         }
     }
 
-    fn upper_bound<Q>(map: &mut BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
+    fn upper_bound<Q>(map: &'a mut BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2482,7 +2480,7 @@ pub struct CursorMutKey<'a, K, V, const B: usize> {
     map: *mut BTreeMap<K, V, B>,
     leaf: Option<*mut Leaf<K, V, B>>,
     index: usize,
-    stack: ArrayVec<(*mut NonLeaf<K, V, B>, usize), 10>,
+    stack: StkVec<(*mut NonLeaf<K, V, B>, usize)>,
     _pd: PhantomData<&'a mut BTreeMap<K, V, B>>,
 }
 
@@ -2495,7 +2493,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             map,
             leaf: None,
             index: 0,
-            stack: ArrayVec::new(),
+            stack: StkVec::new(),
             _pd: PhantomData,
         }
     }
@@ -2803,9 +2801,9 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
 /// Cursor returned by [BTreeMap::lower_bound], [BTreeMap::upper_bound].
 #[derive(Debug, Clone)]
 pub struct Cursor<'a, K, V, const B: usize> {
-    leaf: Option<*const Leaf<K, V, B>>, // Maybe can use orderinary reference rather than pointer.
+    leaf: Option<*const Leaf<K, V, B>>,
     index: usize,
-    stack: ArrayVec<(*const NonLeaf<K, V, B>, usize), 10>,
+    stack: StkVec<(*const NonLeaf<K, V, B>, usize)>,
     _pd: PhantomData<&'a BTreeMap<K, V, B>>,
 }
 
@@ -2817,12 +2815,12 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         Self {
             leaf: None,
             index: 0,
-            stack: ArrayVec::new(),
+            stack: StkVec::new(),
             _pd: PhantomData,
         }
     }
 
-    fn lower_bound<Q>(bt: &BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
+    fn lower_bound<Q>(bt: &'a BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2832,7 +2830,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         s
     }
 
-    fn upper_bound<Q>(bt: &BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
+    fn upper_bound<Q>(bt: &'a BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2842,7 +2840,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         s
     }
 
-    fn push_lower<Q>(&mut self, tree: &Tree<K, V, B>, bound: Bound<&Q>)
+    fn push_lower<Q>(&mut self, tree: &'a Tree<K, V, B>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2861,7 +2859,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         }
     }
 
-    fn push_upper<Q>(&mut self, tree: &Tree<K, V, B>, bound: Bound<&Q>)
+    fn push_upper<Q>(&mut self, tree: &'a Tree<K, V, B>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
