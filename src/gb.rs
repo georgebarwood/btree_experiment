@@ -1,59 +1,14 @@
-use std::{
-    borrow::Borrow,
-    cmp::Ordering,
-    fmt,
-    fmt::Debug,
-    iter::FusedIterator,
-    marker::PhantomData,
-    ops::{Bound, RangeBounds},
-};
-
-// Vector types.
-type StkVec<T> = arrayvec::ArrayVec<T, 15>;
-
-use crate::vecs::{FixedCapIter, FixedCapVec};
-type LeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
-type NonLeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
-type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>, B>;
-
-type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
-
-fn check_range<T, R>(range: &R)
-where
-    T: Ord + ?Sized,
-    R: RangeBounds<T>,
-{
-    use Bound::*;
-    match (range.start_bound(), range.end_bound()) {
-        (Included(s), Included(e)) => {
-            if e < s {
-                panic!("range start is greater than range end in BTreeMap")
-            }
-        }
-        (Included(s), Excluded(e)) => {
-            if e < s {
-                panic!("range start is greater than range end in BTreeMap")
-            }
-        }
-        (Excluded(s), Included(e)) => {
-            if e < s {
-                panic!("range start is greater than range end in BTreeMap")
-            }
-        }
-        (Excluded(s), Excluded(e)) => {
-            if e == s {
-                panic!("range start and end are equal and excluded in BTreeMap")
-            }
-            if e < s {
-                panic!("range start is greater than range end in BTreeMap")
-            }
-        }
-        _ => {}
-    }
-}
-
 /// BTreeMap similar to [std::collections::BTreeMap] where the node capacity (B) can be specified.
 /// B should be an odd number, at least 11, a good value may be 39.
+///
+/// General guide to implementation:
+///
+/// [BTreeMap] has a length and a Tree, where Tree is an enum that can be Leaf or NonLeaf.
+///
+/// The [Entry] API is implemented using [CursorMut].
+///
+/// [CursorMut] is implemented using [CursorMutKey] which has a stack of raw pointer/index pairs to keep track of non-leaf positions.
+
 pub struct BTreeMap<K, V, const B: usize> {
     len: usize,
     tree: Tree<K, V, B>,
@@ -660,9 +615,63 @@ where
     }
 }
 
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    fmt,
+    fmt::Debug,
+    iter::FusedIterator,
+    marker::PhantomData,
+    ops::{Bound, RangeBounds},
+};
+
+// Vector types.
+type StkVec<T> = arrayvec::ArrayVec<T, 15>;
+
+use crate::vecs::{FixedCapIter, FixedCapVec};
+type LeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
+type NonLeafVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
+type NonLeafChildVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>, B>;
+
+type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
+
 struct InsertCtx<K, V, const B: usize> {
     value: Option<V>,
     split: Option<Split<K, V, B>>,
+}
+
+fn check_range<T, R>(range: &R)
+where
+    T: Ord + ?Sized,
+    R: RangeBounds<T>,
+{
+    use Bound::*;
+    match (range.start_bound(), range.end_bound()) {
+        (Included(s), Included(e)) => {
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+        }
+        (Included(s), Excluded(e)) => {
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+        }
+        (Excluded(s), Included(e)) => {
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+        }
+        (Excluded(s), Excluded(e)) => {
+            if e == s {
+                panic!("range start and end are equal and excluded in BTreeMap")
+            }
+            if e < s {
+                panic!("range start is greater than range end in BTreeMap")
+            }
+        }
+        _ => {}
+    }
 }
 
 #[derive(Debug)]
@@ -699,14 +708,14 @@ impl<K, V, const B: usize> Tree<K, V, B> {
     fn nonleaf(&mut self) -> &mut NonLeaf<K, V, B> {
         match self {
             Tree::NL(nl) => nl,
-            _ => panic!(),
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
     fn leaf(&mut self) -> &mut Leaf<K, V, B> {
         match self {
             Tree::L(leaf) => leaf,
-            _ => panic!(),
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -2970,7 +2979,6 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
     }
 
     /// Move the cursor back, returns references to the key and value of the element that it moved over.
-    #[allow(clippy::should_implement_trait)]
     pub fn prev(&mut self) -> Option<(&K, &V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();

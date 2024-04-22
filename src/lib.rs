@@ -1,6 +1,9 @@
 //! This crate implements a [BTreeMap] similar to [std::collections::BTreeMap].
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
+//!
+//! Most of the implementation is in the [gb] module, see [gb::BTreeMap].
+//!
 //!# Features
 //!
 //! This crate supports the following cargo features:
@@ -16,6 +19,7 @@
 
 /// Module with version of BTreeMap that allows B to be specified as generic constant.
 pub mod gb;
+
 mod vecs;
 
 // Types for compatibility.
@@ -25,7 +29,7 @@ pub use gb::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 /// Default B value ( this is capacity, usually B is defined as B/2 + 1 ).
 pub const DB: usize = 39;
 
-/// BTreeMap similar to [std::collections::BTreeMap].
+/// BTreeMap similar to [std::collections::BTreeMap] with default node capacity [DB].
 pub type BTreeMap<K, V> = gb::BTreeMap<K, V, DB>;
 
 /// Entry in BTreeMap, returned by [BTreeMap::entry].
