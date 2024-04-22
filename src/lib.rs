@@ -1,21 +1,27 @@
+#![deny(missing_docs)]
+#![cfg_attr(test, feature(btree_cursors, assert_matches))]
+
 //! This crate implements a [BTreeMap] similar to [std::collections::BTreeMap].
 //!
 //! One difference is the walk and walk_mut methods, which can be slightly more efficient than using range and range_mut.
 //!
 //! Most of the implementation is in the [gb] module, see [gb::BTreeMap].
 //!
+//! # Example
+//!
+//! ```
+//!     use btree_experiment::BTreeMap;
+//!     let mut mymap = BTreeMap::new();
+//!     mymap.insert("England", "London");
+//!     mymap.insert("France", "Paris");
+//!     println!("The capital of France is {}", mymap["France"]);
+//! ```
+//!
 //!# Features
 //!
 //! This crate supports the following cargo features:
 //! - `serde` : enables serialisation of [BTreeMap] via serde crate.
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
-
-// Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode
-// when the unsafe_optim feature is enabled, but are not declared as such to avoid littering
-// the code with unsafe blocks.
-
-#![deny(missing_docs)]
-#![cfg_attr(test, feature(btree_cursors, assert_matches))]
 
 /// Module with version of BTreeMap that allows B to be specified as generic constant.
 pub mod gb;

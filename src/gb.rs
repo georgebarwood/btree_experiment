@@ -7,7 +7,14 @@
 ///
 /// The [Entry] API is implemented using [CursorMut].
 ///
-/// [CursorMut] is implemented using [CursorMutKey] which has a stack of raw pointer/index pairs to keep track of non-leaf positions.
+/// [CursorMut] is implemented using [CursorMutKey] which has a stack of raw pointer/index pairs
+/// to keep track of non-leaf positions.
+///
+/// Roughly speaking, unsafe code is limited to the implementation of [CursorMutKey].
+///
+/// Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode
+/// when the unsafe_optim feature is enabled, but are not declared as such to avoid littering
+/// the code with unsafe blocks.
 
 pub struct BTreeMap<K, V, const B: usize> {
     len: usize,
