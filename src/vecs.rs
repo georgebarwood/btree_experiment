@@ -65,6 +65,21 @@ impl<T> BasicVec<T> {
         };
     }
 
+    /// Free memory.
+    /// # Safety
+    ///
+    /// The capacity must be the last capacity set.
+    pub unsafe fn free(&mut self, cap: usize) {
+        let elem_size = mem::size_of::<T>();
+
+        if cap != 0 && elem_size != 0 && self.p != NonNull::dangling() {
+            alloc::dealloc(
+                self.p.as_ptr().cast::<u8>(),
+                Layout::array::<T>(cap).unwrap(),
+            );
+        }
+    }
+
     /// Set value.
     /// # Safety
     ///
@@ -116,21 +131,6 @@ impl<T> BasicVec<T> {
     pub unsafe fn move_from(&mut self, from: usize, src: &mut Self, to: usize, len: usize) {
         ptr::copy_nonoverlapping(src.ix(from), self.ix(to), len);
     }
-
-    /// Free memory.
-    /// # Safety
-    ///
-    /// The capacity must be the last capacity set.
-    pub unsafe fn free(&mut self, cap: usize) {
-        let elem_size = mem::size_of::<T>();
-
-        if cap != 0 && elem_size != 0 {
-            alloc::dealloc(
-                self.p.as_ptr().cast::<u8>(),
-                Layout::array::<T>(cap).unwrap(),
-            );
-        }
-    }
 }
 
 /// In debug mode or feature unsafe-optim not enabled, same as assert! otherwise does nothing.
@@ -148,18 +148,38 @@ macro_rules! safe_assert {
 }
 
 /// Vec with fixed capacity.
-pub(crate) struct FixedCapVec<T, const CAP: usize> {
+pub(crate) struct FixedCapVec<T> {
     len: usize,
     v: BasicVec<T>,
 }
 
-impl<T, const CAP: usize> FixedCapVec<T, CAP> {
-    pub fn new() -> Self {
+impl<T> Default for FixedCapVec<T> {
+    fn default() -> Self {
+        let v = BasicVec::new();
+        Self { len: 0, v }
+    }
+}
+
+impl<T> FixedCapVec<T> {
+    pub fn new(cap: usize) -> Self {
         let mut v = BasicVec::new();
         unsafe {
-            v.set_cap(0, CAP);
+            v.set_cap(0, cap);
         }
         Self { len: 0, v }
+    }
+
+    pub fn free(&mut self, cap: usize) {
+        let mut len = self.len;
+        while len > 0 {
+            len -= 1;
+            unsafe {
+                self.v.get(len);
+            }
+        }
+        unsafe {
+            self.v.free(cap);
+        }
     }
 
     #[inline]
@@ -174,7 +194,6 @@ impl<T, const CAP: usize> FixedCapVec<T, CAP> {
 
     #[inline]
     pub fn push(&mut self, value: T) {
-        safe_assert!(self.len < CAP);
         unsafe {
             self.v.set(self.len, value);
         }
@@ -192,7 +211,6 @@ impl<T, const CAP: usize> FixedCapVec<T, CAP> {
     }
 
     pub fn insert(&mut self, at: usize, value: T) {
-        safe_assert!(at <= self.len && self.len < CAP);
         unsafe {
             if at < self.len {
                 self.v.move_self(at, at + 1, self.len - at);
@@ -212,10 +230,10 @@ impl<T, const CAP: usize> FixedCapVec<T, CAP> {
         }
     }
 
-    pub fn split_off(&mut self, at: usize) -> Self {
+    pub fn split_off(&mut self, at: usize, cap: usize) -> Self {
         safe_assert!(at < self.len);
         let len = self.len - at;
-        let mut result = Self::new();
+        let mut result = Self::new(cap);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
         }
@@ -279,9 +297,17 @@ impl<T, const CAP: usize> FixedCapVec<T, CAP> {
         }
         Err(i)
     }
+
+    pub fn get_into_iter(self, cap: usize) -> FixedCapIter<T> {
+        FixedCapIter {
+            start: 0,
+            v: self,
+            cap,
+        }
+    }
 }
 
-impl<T, const CAP: usize> Deref for FixedCapVec<T, CAP> {
+impl<T> Deref for FixedCapVec<T> {
     type Target = [T];
     #[inline]
     fn deref(&self) -> &[T] {
@@ -290,7 +316,7 @@ impl<T, const CAP: usize> Deref for FixedCapVec<T, CAP> {
     }
 }
 
-impl<T, const CAP: usize> DerefMut for FixedCapVec<T, CAP> {
+impl<T> DerefMut for FixedCapVec<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [T] {
         let len: usize = FixedCapVec::len(self);
@@ -298,37 +324,7 @@ impl<T, const CAP: usize> DerefMut for FixedCapVec<T, CAP> {
     }
 }
 
-impl<T, const CAP: usize> Default for FixedCapVec<T, CAP> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T, const CAP: usize> Drop for FixedCapVec<T, CAP> {
-    fn drop(&mut self) {
-        let mut len = self.len;
-        while len > 0 {
-            len -= 1;
-            unsafe {
-                self.v.get(len);
-            }
-        }
-        unsafe {
-            self.v.free(CAP);
-        }
-    }
-}
-
-impl<T, const CAP: usize> IntoIterator for FixedCapVec<T, CAP> {
-    type Item = T;
-    type IntoIter = FixedCapIter<T, CAP>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        FixedCapIter { start: 0, v: self }
-    }
-}
-
-impl<T, const CAP: usize> fmt::Debug for FixedCapVec<T, CAP>
+impl<T> fmt::Debug for FixedCapVec<T>
 where
     T: fmt::Debug,
 {
@@ -337,12 +333,13 @@ where
     }
 }
 
-pub(crate) struct FixedCapIter<T, const CAP: usize> {
+pub(crate) struct FixedCapIter<T> {
     start: usize,
-    v: FixedCapVec<T, CAP>,
+    cap: usize,
+    v: FixedCapVec<T>,
 }
 
-impl<T, const CAP: usize> Iterator for FixedCapIter<T, CAP> {
+impl<T> Iterator for FixedCapIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len {
@@ -354,7 +351,7 @@ impl<T, const CAP: usize> Iterator for FixedCapIter<T, CAP> {
         }
     }
 }
-impl<T, const CAP: usize> DoubleEndedIterator for FixedCapIter<T, CAP> {
+impl<T> DoubleEndedIterator for FixedCapIter<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len {
             None
@@ -364,15 +361,16 @@ impl<T, const CAP: usize> DoubleEndedIterator for FixedCapIter<T, CAP> {
         }
     }
 }
-impl<T, const CAP: usize> Drop for FixedCapIter<T, CAP> {
+impl<T> Drop for FixedCapIter<T> {
     fn drop(&mut self) {
         while self.len() > 0 {
             self.next();
         }
         self.v.len = 0;
+        self.v.free(self.cap);
     }
 }
-impl<T, const CAP: usize> ExactSizeIterator for FixedCapIter<T, CAP> {
+impl<T> ExactSizeIterator for FixedCapIter<T> {
     fn len(&self) -> usize {
         self.v.len - self.start
     }

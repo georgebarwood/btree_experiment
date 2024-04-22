@@ -11,10 +11,6 @@
 /// to keep track of non-leaf positions.
 ///
 /// Roughly speaking, unsafe code is limited to the implementation of [`CursorMut`] and [`CursorMutKey`].
-///
-/// Note: some (crate) private methods of `FixedCapVec` are techically unsafe in release mode
-/// when the unsafe-optim feature is enabled, but are not declared as such to avoid littering
-/// the code with unsafe blocks.
 
 pub struct BTreeMap<K, V, const B: usize> {
     len: usize,
@@ -648,8 +644,8 @@ use std::{
 type StkVec<T> = arrayvec::ArrayVec<T, 15>;
 
 use crate::vecs::{FixedCapIter, FixedCapVec};
-type PairVec<K, V, const B: usize> = FixedCapVec<(K, V), B>;
-type TreeVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>, B>;
+type PairVec<K, V, const B: usize> = FixedCapVec<(K, V)>;
+type TreeVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>>;
 
 type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
 
@@ -686,7 +682,7 @@ enum Tree<K, V, const B: usize> {
 }
 impl<K, V, const B: usize> Default for Tree<K, V, B> {
     fn default() -> Self {
-        Tree::L(Leaf(PairVec::new()))
+        Tree::L(Leaf(PairVec::new(B)))
     }
 }
 impl<K, V, const B: usize> Tree<K, V, B> {
@@ -701,13 +697,11 @@ impl<K, V, const B: usize> Tree<K, V, B> {
     }
 
     fn new_root(&mut self, (med, right): Split<K, V, B>) {
-        let left = std::mem::take(self);
-        let mut v = PairVec::new();
-        v.push(med);
-        let mut c = TreeVec::new();
-        c.push(left);
-        c.push(right);
-        *self = Tree::NL(NonLeaf { v, c });
+        let mut nl = NonLeaf::new();
+        nl.v.push(med);
+        nl.c.push(std::mem::take(self));
+        nl.c.push(right);
+        *self = Tree::NL(nl);
     }
 
     unsafe fn nonleaf(&mut self) -> &mut NonLeaf<K, V, B> {
@@ -884,9 +878,19 @@ impl<K, V, const B: usize> Tree<K, V, B> {
 
 #[derive(Debug)]
 struct Leaf<K, V, const B: usize>(PairVec<K, V, B>);
+impl<K, V, const B: usize> Drop for Leaf<K, V, B> {
+    fn drop(&mut self) {
+        self.0.free(B);
+    }
+}
 impl<K, V, const B: usize> Leaf<K, V, B> {
     fn full(&self) -> bool {
         self.0.len() == B
+    }
+
+    fn get_into_iter(mut self) -> FixedCapIter<(K, V)> {
+        let v = std::mem::take(&mut self.0);
+        v.get_into_iter(B)
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -924,7 +928,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     }
 
     fn split(&mut self) -> ((K, V), PairVec<K, V, B>) {
-        let right = self.0.split_off(B / 2 + 1);
+        let right = self.0.split_off(B / 2 + 1, B);
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -1057,10 +1061,29 @@ struct NonLeaf<K, V, const B: usize> {
     v: PairVec<K, V, B>,
     c: TreeVec<K, V, B>,
 }
+impl<K, V, const B: usize> Drop for NonLeaf<K, V, B> {
+    fn drop(&mut self) {
+        self.v.free(B);
+        self.c.free(B + 1);
+    }
+}
 impl<K, V, const B: usize> NonLeaf<K, V, B> {
     fn full(&self) -> bool {
-        // Last allocated element unused because child vec needs to store 1 extra.
-        self.v.len() == B - 1
+        self.v.len() == B
+    }
+
+    fn new() -> Self {
+        Self {
+            v: PairVec::new(B),
+            c: TreeVec::new(B + 1),
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn get_into_iter(mut self) -> (FixedCapIter<(K, V)>, FixedCapIter<Tree<K, V, B>>) {
+        let v = std::mem::take(&mut self.v);
+        let c = std::mem::take(&mut self.c);
+        (v.get_into_iter(B), c.get_into_iter(B + 1))
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -1118,8 +1141,8 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
 
     fn split(&mut self) -> Split<K, V, B> {
         let right = Self {
-            v: self.v.split_off(B / 2 + 1),
-            c: self.c.split_off(B / 2 + 1),
+            v: self.v.split_off(B / 2 + 1, B),
+            c: self.c.split_off(B / 2 + 1, B + 1),
         };
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
@@ -1178,7 +1201,7 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
                     self.c.remove(i);
                     self.v.remove(i);
                 }
-            } 
+            }
         }
         removed += self.c.ixm(i).retain(f);
         removed
@@ -1780,13 +1803,13 @@ impl<K, V, const B: usize> ExactSizeIterator for IntoIter<K, V, B> {
 impl<K, V, const B: usize> FusedIterator for IntoIter<K, V, B> {}
 
 struct StkCon<K, V, const B: usize> {
-    v: FixedCapIter<(K, V), B>,
-    c: FixedCapIter<Tree<K, V, B>, B>,
+    v: FixedCapIter<(K, V)>,
+    c: FixedCapIter<Tree<K, V, B>>,
 }
 
 struct IntoIterInner<K, V, const B: usize> {
-    fwd_leaf: Option<FixedCapIter<(K, V), B>>,
-    bck_leaf: Option<FixedCapIter<(K, V), B>>,
+    fwd_leaf: Option<FixedCapIter<(K, V)>>,
+    bck_leaf: Option<FixedCapIter<(K, V)>>,
     fwd_stk: StkVec<StkCon<K, V, B>>,
     bck_stk: StkVec<StkCon<K, V, B>>,
 }
@@ -1802,10 +1825,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree(&mut self, tree: Tree<K, V, B>, both: bool) {
         match tree {
             Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.0.into_iter());
+                self.fwd_leaf = Some(leaf.get_into_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = (nl.v.into_iter(), nl.c.into_iter());
+                let (v, mut c) = nl.get_into_iter();
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -1822,10 +1845,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree_back(&mut self, tree: Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.0.into_iter());
+                self.bck_leaf = Some(leaf.get_into_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = (nl.v.into_iter(), nl.c.into_iter());
+                let (v, mut c) = nl.get_into_iter();
                 let ct_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
                 if let Some(ct_back) = ct_back {
