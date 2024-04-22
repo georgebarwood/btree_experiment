@@ -206,35 +206,35 @@ fn mut_cursor_test() {
     for i in 105..n {
         let (k, v) = c.next().unwrap();
         // println!("x={:?}", x);
-        assert_eq!((*k, *v), (i, i))
+        assert_eq!((*k, *v), (i, i));
     }
 
     let mut c = m.lower_bound_mut(Bound::Excluded(&105));
     for i in 106..n {
         let (k, v) = c.next().unwrap();
         // println!("x={:?}", x);
-        assert_eq!((*k, *v), (i, i))
+        assert_eq!((*k, *v), (i, i));
     }
 
     let mut c = m.upper_bound_mut(Bound::Included(&105));
     for i in 106..n {
         let (k, v) = c.next().unwrap();
         // println!("x={:?}", x);
-        assert_eq!((*k, *v), (i, i))
+        assert_eq!((*k, *v), (i, i));
     }
 
     let mut c = m.upper_bound_mut(Bound::Excluded(&105));
     for i in 105..n {
         let (k, v) = c.next().unwrap();
         // println!("x={:?}", x);
-        assert_eq!((*k, *v), (i, i))
+        assert_eq!((*k, *v), (i, i));
     }
 
     let mut c = m.upper_bound_mut(Bound::Unbounded);
     for i in (0..n).rev() {
         let (k, v) = c.prev().unwrap();
         // println!("x={:?}", x);
-        assert_eq!((*k, *v), (i, i))
+        assert_eq!((*k, *v), (i, i));
     }
 
     let mut a = BTreeMap::new();
@@ -361,7 +361,7 @@ fn exp_iter() {
         m.entry(i).or_insert(i);
     }
     for _rep in 0..REP {
-        for (k, v) in m.iter() {
+        for (k, v) in &m {
             assert!(k == v);
         }
     }
@@ -375,7 +375,7 @@ fn std_iter() {
         m.entry(i).or_insert(i);
     }
     for _rep in 0..REP {
-        for (k, v) in m.iter() {
+        for (k, v) in &m {
             assert!(k == v);
         }
     }
@@ -425,7 +425,7 @@ fn various_tests() {
             println!("doing for x in & test");
             for x in &t {
                 if *x.0 < 50 {
-                    print!("{:?};", x);
+                    print!("{x:?};");
                 }
             }
             println!();
@@ -434,7 +434,7 @@ fn various_tests() {
             for x in &mut t {
                 *x.1 *= 1;
                 if *x.0 < 50 {
-                    print!("{:?};", x);
+                    print!("{x:?};");
                 }
             }
             println!();
@@ -443,7 +443,7 @@ fn various_tests() {
 
             for x in t.range_mut(20..=60000).rev() {
                 if *x.0 < 50 {
-                    print!("{:?};", x);
+                    print!("{x:?};");
                 }
             }
             println!("done range mut test");
@@ -452,7 +452,7 @@ fn various_tests() {
 
             for x in t.range(20..=60000).rev() {
                 if *x.0 < 50 {
-                    print!("{:?};", x);
+                    print!("{x:?};");
                 }
             }
             println!("done range non-mut test");
@@ -506,7 +506,7 @@ fn various_tests() {
             println!("Consuming iterator test");
             for x in t {
                 if x.0 < 50 {
-                    print!("{:?};", x);
+                    print!("{x:?};");
                 }
             }
             println!();
@@ -515,14 +515,14 @@ fn various_tests() {
             let a = [1, 2, 3];
             let map: BTreeMap<i32, i32> = a.iter().map(|&x| (x, x * x)).collect();
             for x in map {
-                print!("{:?};", x);
+                print!("{x:?};");
             }
             println!();
 
             println!("From test");
             let map = BTreeMap::from([(1, 2), (3, 4)]);
             for x in map {
-                print!("{:?};", x);
+                print!("{x:?};");
             }
             println!();
         }

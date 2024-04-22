@@ -1,19 +1,19 @@
-/// BTreeMap similar to [std::collections::BTreeMap] where the node capacity (B) can be specified.
+/// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (B) can be specified.
 /// B should be an odd number, at least 11, a good value may be 39.
 ///
 /// General guide to implementation:
 ///
-/// [BTreeMap] has a length and a Tree, where Tree is an enum that can be Leaf or NonLeaf.
+/// [`BTreeMap`] has a length and a Tree, where Tree is an enum that can be Leaf or `NonLeaf`.
 ///
-/// The [Entry] API is implemented using [CursorMut].
+/// The [Entry] API is implemented using [`CursorMut`].
 ///
-/// [CursorMut] is implemented using [CursorMutKey] which has a stack of raw pointer/index pairs
+/// [`CursorMut`] is implemented using [`CursorMutKey`] which has a stack of raw pointer/index pairs
 /// to keep track of non-leaf positions.
 ///
-/// Roughly speaking, unsafe code is limited to the implementation of [CursorMut] and [CursorMutKey].
+/// Roughly speaking, unsafe code is limited to the implementation of [`CursorMut`] and [`CursorMutKey`].
 ///
-/// Note: some (crate) private methods of FixedCapVec are techically unsafe in release mode
-/// when the unsafe_optim feature is enabled, but are not declared as such to avoid littering
+/// Note: some (crate) private methods of `FixedCapVec` are techically unsafe in release mode
+/// when the unsafe-optim feature is enabled, but are not declared as such to avoid littering
 /// the code with unsafe blocks.
 
 pub struct BTreeMap<K, V, const B: usize> {
@@ -36,6 +36,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     };
 
     /// Returns a new, empty map.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             len: Self::CHECK_B,
@@ -50,11 +51,13 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get number of key-value pairs in the map.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// Is the map empty?
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -227,11 +230,13 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get references to first key and value.
+    #[must_use]
     pub fn first_key_value(&self) -> Option<(&K, &V)> {
         self.tree.iter().next()
     }
 
     /// Gets references to last key and value.
+    #[must_use]
     pub fn last_key_value(&self) -> Option<(&K, &V)> {
         self.tree.iter().next_back()
     }
@@ -282,6 +287,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get iterator of references to key-value pairs.
+    #[must_use]
     pub fn iter(&self) -> Iter<'_, K, V, B> {
         Iter {
             len: self.len,
@@ -321,11 +327,13 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get iterator of references to keys.
+    #[must_use]
     pub fn keys(&self) -> Keys<'_, K, V, B> {
         Keys(self.iter())
     }
 
     /// Get iterator of references to values.
+    #[must_use]
     pub fn values(&self) -> Values<'_, K, V, B> {
         Values(self.iter())
     }
@@ -336,11 +344,13 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get consuming iterator that returns all the keys, in sorted order.
+    #[must_use]
     pub fn into_keys(self) -> IntoKeys<K, V, B> {
         IntoKeys(self.into_iter())
     }
 
     /// Get consuming iterator that returns all the values, in sorted order.
+    #[must_use]
     pub fn into_values(self) -> IntoValues<K, V, B> {
         IntoValues(self.into_iter())
     }
@@ -364,6 +374,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get cursor positioned just after bound.
+    #[must_use]
     pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V, B>
     where
         K: Borrow<Q> + Ord,
@@ -373,6 +384,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     }
 
     /// Get cursor positioned just before bound.
+    #[must_use]
     pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V, B>
     where
         K: Borrow<Q> + Ord,
@@ -435,7 +447,7 @@ impl<K, V, const B: usize> IntoIterator for BTreeMap<K, V, B> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V, B>;
 
-    /// Convert BTreeMap to Iterator.
+    /// Convert `BTreeMap` to Iterator.
     fn into_iter(self) -> IntoIter<K, V, B> {
         IntoIter::new(self)
     }
@@ -701,14 +713,14 @@ impl<K, V, const B: usize> Tree<K, V, B> {
     unsafe fn nonleaf(&mut self) -> &mut NonLeaf<K, V, B> {
         match self {
             Tree::NL(nl) => nl,
-            _ => unsafe { std::hint::unreachable_unchecked() },
+            Tree::L(_) => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
     unsafe fn leaf(&mut self) -> &mut Leaf<K, V, B> {
         match self {
             Tree::L(leaf) => leaf,
-            _ => unsafe { std::hint::unreachable_unchecked() },
+            Tree::NL(_) => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -1155,7 +1167,9 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
         while i < self.v.len() {
             removed += self.c.ixm(i).retain(f);
             let e = self.v.ixm(i);
-            if !f(&e.0, &mut e.1) {
+            if f(&e.0, &mut e.1) {
+                i += 1;
+            } else {
                 removed += 1;
                 if let Some(x) = self.c.ixm(i).pop_last() {
                     let _ = std::mem::replace(self.v.ixm(i), x);
@@ -1164,9 +1178,7 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
                     self.c.remove(i);
                     self.v.remove(i);
                 }
-            } else {
-                i += 1;
-            }
+            } 
         }
         removed += self.c.ixm(i).retain(f);
         removed
@@ -1284,7 +1296,7 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
     }
 } // End impl NonLeaf
 
-/// Error returned by [BTreeMap::try_insert].
+/// Error returned by [`BTreeMap::try_insert`].
 pub struct OccupiedError<'a, K, V, const B: usize>
 where
     K: 'a,
@@ -1296,7 +1308,7 @@ where
     pub value: V,
 }
 
-/// Entry in BTreeMap, returned by [BTreeMap::entry].
+/// Entry in `BTreeMap`, returned by [`BTreeMap::entry`].
 pub enum Entry<'a, K, V, const B: usize> {
     /// Vacant entry - map doesn't yet contain key.
     Vacant(VacantEntry<'a, K, V, B>),
@@ -1412,21 +1424,25 @@ where
     K: Ord,
 {
     /// Get reference to entry key.
+    #[must_use]
     pub fn key(&self) -> &K {
         self.cursor.peek_next().unwrap().0
     }
 
     /// Remove (key,value) from map, returning key and value.
+    #[must_use]
     pub fn remove_entry(mut self) -> (K, V) {
         self.cursor.remove_next().unwrap()
     }
 
     /// Remove (key,value) from map, returning the value.
+    #[must_use]
     pub fn remove(self) -> V {
         self.remove_entry().1
     }
 
     /// Get reference to the value.
+    #[must_use]
     pub fn get(&self) -> &V {
         self.cursor.peek_next().unwrap().1
     }
@@ -1437,6 +1453,7 @@ where
     }
 
     /// Get mutable reference to the value, consuming the entry.
+    #[must_use]
     pub fn into_mut(self) -> &'a mut V {
         self.cursor.into_mut()
     }
@@ -1455,7 +1472,7 @@ enum StealResultMut<'a, K, V, const B: usize> {
     Nothing,
 }
 
-/// Iterator returned by [BTreeMap::iter_mut].
+/// Iterator returned by [`BTreeMap::iter_mut`].
 #[derive(Debug, Default)]
 pub struct IterMut<'a, K, V, const B: usize> {
     len: usize,
@@ -1498,7 +1515,7 @@ struct StkMut<'a, K, V, const B: usize> {
     c: std::slice::IterMut<'a, Tree<K, V, B>>,
 }
 
-/// Iterator returned by [BTreeMap::range_mut].
+/// Iterator returned by [`BTreeMap::range_mut`].
 #[derive(Debug, Default)]
 pub struct RangeMut<'a, K, V, const B: usize> {
     /* There are two iterations going on to implement DoubleEndedIterator.
@@ -1553,7 +1570,7 @@ impl<'a, K, V, const B: usize> RangeMut<'a, K, V, B> {
             }
             Tree::NL(nl) => {
                 let (x, y) = nl.get_xy(range);
-                let (v, mut c) = (nl.v[x..y].iter_mut(), nl.c[x..y + 1].iter_mut());
+                let (v, mut c) = (nl.v[x..y].iter_mut(), nl.c[x..=y].iter_mut());
 
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
@@ -1582,7 +1599,7 @@ impl<'a, K, V, const B: usize> RangeMut<'a, K, V, B> {
             }
             Tree::NL(nl) => {
                 let (x, y) = nl.get_xy(range);
-                let (v, mut c) = (nl.v[x..y].iter_mut(), nl.c[x..y + 1].iter_mut());
+                let (v, mut c) = (nl.v[x..y].iter_mut(), nl.c[x..=y].iter_mut());
 
                 let ct_back = c.next_back();
 
@@ -1718,7 +1735,7 @@ enum StealResultCon<K, V, const B: usize> {
     Nothing,
 }
 
-/// Consuming iterator returned by [BTreeMap::into_iter].
+/// Consuming iterator returned by [`BTreeMap::into_iter`].
 pub struct IntoIter<K, V, const B: usize> {
     len: usize,
     inner: IntoIterInner<K, V, B>,
@@ -1926,7 +1943,7 @@ enum StealResult<'a, K, V, const B: usize> {
     Nothing,
 }
 
-/// Iterator returned by [BTreeMap::iter].
+/// Iterator returned by [`BTreeMap::iter`].
 #[derive(Clone, Debug, Default)]
 pub struct Iter<'a, K, V, const B: usize> {
     len: usize,
@@ -1969,7 +1986,7 @@ struct Stk<'a, K, V, const B: usize> {
     c: std::slice::Iter<'a, Tree<K, V, B>>,
 }
 
-/// Iterator returned by [BTreeMap::range].
+/// Iterator returned by [`BTreeMap::range`].
 #[derive(Clone, Debug, Default)]
 pub struct Range<'a, K, V, const B: usize> {
     fwd_leaf: Option<IterLeaf<'a, K, V>>,
@@ -2174,7 +2191,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Range<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for Range<'a, K, V, B> {}
 
-/// Consuming iterator returned by [BTreeMap::into_keys].
+/// Consuming iterator returned by [`BTreeMap::into_keys`].
 pub struct IntoKeys<K, V, const B: usize>(IntoIter<K, V, B>);
 impl<K, V, const B: usize> Iterator for IntoKeys<K, V, B> {
     type Item = K;
@@ -2198,7 +2215,7 @@ impl<K, V, const B: usize> ExactSizeIterator for IntoKeys<K, V, B> {
 }
 impl<K, V, const B: usize> FusedIterator for IntoKeys<K, V, B> {}
 
-/// Consuming iterator returned by [BTreeMap::into_values].
+/// Consuming iterator returned by [`BTreeMap::into_values`].
 pub struct IntoValues<K, V, const B: usize>(IntoIter<K, V, B>);
 impl<K, V, const B: usize> Iterator for IntoValues<K, V, B> {
     type Item = V;
@@ -2258,7 +2275,7 @@ impl<'a, K, V> DoubleEndedIterator for IterLeaf<'a, K, V> {
 
 // Trivial iterators.
 
-/// Iterator returned by [BTreeMap::values_mut].
+/// Iterator returned by [`BTreeMap::values_mut`].
 pub struct ValuesMut<'a, K, V, const B: usize>(IterMut<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for ValuesMut<'a, K, V, B> {
     type Item = &'a mut V;
@@ -2273,7 +2290,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for ValuesMut<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for ValuesMut<'a, K, V, B> {}
 
-/// Iterator returned by [BTreeMap::values].
+/// Iterator returned by [`BTreeMap::values`].
 #[derive(Clone, Default)]
 pub struct Values<'a, K, V, const B: usize>(Iter<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for Values<'a, K, V, B> {
@@ -2289,7 +2306,7 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Values<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for Values<'a, K, V, B> {}
 
-/// Iterator returned by [BTreeMap::keys].
+/// Iterator returned by [`BTreeMap::keys`].
 #[derive(Clone, Default)]
 pub struct Keys<'a, K, V, const B: usize>(Iter<'a, K, V, B>);
 impl<'a, K, V, const B: usize> Iterator for Keys<'a, K, V, B> {
@@ -2310,7 +2327,7 @@ impl<'a, K, V, const B: usize> ExactSizeIterator for Keys<'a, K, V, B> {
 }
 impl<'a, K, V, const B: usize> FusedIterator for Keys<'a, K, V, B> {}
 
-/// Iterator returned by [BTreeMap::extract_if].
+/// Iterator returned by [`BTreeMap::extract_if`].
 // #[derive(Debug)]
 pub struct ExtractIf<'a, K, V, const B: usize, F>
 where
@@ -2353,11 +2370,11 @@ impl<'a, K, V, const B: usize, F> FusedIterator for ExtractIf<'a, K, V, B, F> wh
 
 // Cursors.
 
-/// Error type for [CursorMut::insert_before] and [CursorMut::insert_after].
+/// Error type for [`CursorMut::insert_before`] and [`CursorMut::insert_after`].
 #[derive(Debug, Clone)]
 pub struct UnorderedKeyError {}
 
-/// Cursor that allows mutation of map, returned by [BTreeMap::lower_bound_mut], [BTreeMap::upper_bound_mut].
+/// Cursor that allows mutation of map, returned by [`BTreeMap::lower_bound_mut`], [`BTreeMap::upper_bound_mut`].
 pub struct CursorMut<'a, K, V, const B: usize>(CursorMutKey<'a, K, V, B>);
 impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
     fn lower_bound<Q>(map: &'a mut BTreeMap<K, V, B>, bound: Bound<&Q>) -> Self
@@ -2444,26 +2461,30 @@ impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
     }
 
     /// Returns references to the previous key/value pair.
+    #[must_use]
     pub fn peek_next(&self) -> Option<(&K, &mut V)> {
         let (k, v) = self.0.peek_next()?;
         Some((&*k, v))
     }
 
     /// Returns references to the previous key/value pair.
+    #[must_use]
     pub fn peek_prev(&self) -> Option<(&K, &mut V)> {
         let (k, v) = self.0.peek_prev()?;
         Some((&*k, v))
     }
 
-    /// Converts the cursor into a CursorMutKey, which allows mutating the key of elements in the tree.
+    /// Converts the cursor into a `CursorMutKey`, which allows mutating the key of elements in the tree.
     /// # Safety
     ///
     /// Keys must be unique and in sorted order.
+    #[must_use]
     pub unsafe fn with_mutable_key(self) -> CursorMutKey<'a, K, V, B> {
         self.0
     }
 
-    /// Returns a read-only cursor pointing to the same location as the CursorMut.
+    /// Returns a read-only cursor pointing to the same location as the `CursorMut`.
+    #[must_use]
     pub fn as_cursor(&self) -> Cursor<'_, K, V, B> {
         self.0.as_cursor()
     }
@@ -2474,7 +2495,7 @@ impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
     }
 }
 
-/// Cursor that allows mutation of map keys, returned by [CursorMut::with_mutable_key].
+/// Cursor that allows mutation of map keys, returned by [`CursorMut::with_mutable_key`].
 pub struct CursorMutKey<'a, K, V, const B: usize> {
     map: *mut BTreeMap<K, V, B>,
     leaf: Option<*mut Leaf<K, V, B>>,
@@ -2739,6 +2760,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
     }
 
     /// Returns references to the next key/value pair.
+    #[must_use]
     pub fn peek_next(&self) -> Option<(&mut K, &mut V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
@@ -2757,6 +2779,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
         }
     }
     /// Returns references to the previous key/value pair.
+    #[must_use]
     pub fn peek_prev(&self) -> Option<(&mut K, &mut V)> {
         unsafe {
             if self.index == 0 {
@@ -2775,7 +2798,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
         }
     }
 
-    /// Returns a read-only cursor pointing to the same location as the CursorMutKey.
+    /// Returns a read-only cursor pointing to the same location as the `CursorMutKey`.
+    #[must_use]
     pub fn as_cursor(&self) -> Cursor<'_, K, V, B> {
         unsafe {
             let mut c = Cursor::make();
@@ -2798,7 +2822,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
     }
 }
 
-/// Cursor returned by [BTreeMap::lower_bound], [BTreeMap::upper_bound].
+/// Cursor returned by [`BTreeMap::lower_bound`], [`BTreeMap::upper_bound`].
 #[derive(Debug, Clone)]
 pub struct Cursor<'a, K, V, const B: usize> {
     leaf: Option<*const Leaf<K, V, B>>,
@@ -2963,6 +2987,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
     }
 
     /// Returns references to the next key/value pair.
+    #[must_use]
     pub fn peek_next(&self) -> Option<(&K, &V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
@@ -2981,6 +3006,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         }
     }
     /// Returns references to the previous key/value pair.
+    #[must_use]
     pub fn peek_prev(&self) -> Option<(&K, &V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();

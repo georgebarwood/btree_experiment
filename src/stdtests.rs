@@ -224,7 +224,7 @@ fn test_values_mut_mutation() {
     a.insert(2, String::from("goodbye"));
 
     for value in a.values_mut() {
-        value.push_str("!");
+        value.push('!');
     }
 
     let values = Vec::from_iter(a.values().cloned());

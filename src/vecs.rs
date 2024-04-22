@@ -24,7 +24,7 @@ impl<T> Default for BasicVec<T> {
 }
 
 impl<T> BasicVec<T> {
-    /// Construct new BasicVec.
+    /// Construct new `BasicVec`.
     pub fn new() -> Self {
         Self {
             p: NonNull::dangling(),
@@ -42,7 +42,7 @@ impl<T> BasicVec<T> {
     /// Set capacity ( allocate or reallocate memory ).
     /// # Safety
     ///
-    /// old_cap must be the previous capacity set, or 0 if no capacity has yet been set.
+    /// `old_cap` must be the previous capacity set, or 0 if no capacity has yet been set.
     pub unsafe fn set_cap(&mut self, old_cap: usize, new_cap: usize) {
         if mem::size_of::<T>() == 0 {
             return;
@@ -54,12 +54,12 @@ impl<T> BasicVec<T> {
             alloc::alloc(new_layout)
         } else {
             let old_layout = Layout::array::<T>(old_cap).unwrap();
-            let old_ptr = self.p.as_ptr() as *mut u8;
+            let old_ptr = self.p.as_ptr().cast::<u8>();
             alloc::realloc(old_ptr, old_layout, new_layout.size())
         };
 
         // If allocation fails, `new_ptr` will be null, in which case we abort.
-        self.p = match NonNull::new(new_ptr as *mut T) {
+        self.p = match NonNull::new(new_ptr.cast::<T>()) {
             Some(p) => p,
             None => alloc::handle_alloc_error(new_layout),
         };
@@ -109,7 +109,7 @@ impl<T> BasicVec<T> {
         ptr::copy(self.ix(from), self.ix(to), len);
     }
 
-    /// Move elements from another BasicVec.
+    /// Move elements from another `BasicVec`.
     /// # Safety
     ///
     /// The set status of the elements changes in the obvious way. from, to and len must be in range.
@@ -125,7 +125,10 @@ impl<T> BasicVec<T> {
         let elem_size = mem::size_of::<T>();
 
         if cap != 0 && elem_size != 0 {
-            alloc::dealloc(self.p.as_ptr() as *mut u8, Layout::array::<T>(cap).unwrap());
+            alloc::dealloc(
+                self.p.as_ptr().cast::<u8>(),
+                Layout::array::<T>(cap).unwrap(),
+            );
         }
     }
 }
@@ -258,7 +261,7 @@ impl<T, const CAP: usize> FixedCapVec<T, CAP> {
         unsafe { &mut *self.v.ix(ix) }
     }
 
-    /// Same as binary_search_by, but for some obscure reason this seems to be faster.
+    /// Same as `binary_search_by`, but for some obscure reason this seems to be faster.
     pub fn search<F>(&self, mut f: F) -> Result<usize, usize>
     where
         F: FnMut(&T) -> Ordering,
