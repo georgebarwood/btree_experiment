@@ -780,21 +780,21 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let n = M / 2;
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => {
-                    let from = ix(leaf.as_ptr(), at);
+                CA::L(a) => {
+                    let from = ix(a.as_ptr(), at);
                     match &mut right.c {
-                        CA::L(leaf) => {
-                            let to = ixm(leaf.as_mut_ptr(), 0);
+                        CA::L(a) => {
+                            let to = ixm(a.as_mut_ptr(), 0);
                             ptr::copy_nonoverlapping(from, to, n);
                         }
                         CA::NL(_) => panic!(),
                     }
                 }
-                CA::NL(nl) => {
-                    let from = ix(nl.as_ptr(), at);
+                CA::NL(a) => {
+                    let from = ix(a.as_ptr(), at);
                     match &mut right.c {
                         CA::NL(nl) => {
-                            let to = ixm(nl.as_mut_ptr(), 0);
+                            let to = ixm(a.as_mut_ptr(), 0);
                             ptr::copy_nonoverlapping(from, to, n);
                         }
                         CA::L(_) => panic!(),
@@ -812,13 +812,13 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = &mut self.clen[at];
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => {
-                    let p = ixm(leaf.as_mut_ptr(), at);
+                CA::L(a) => {
+                    let p = ixm(a.as_mut_ptr(), at);
                     (*p).free(clen);
                     let _ = p.read();
                 }
-                CA::NL(nl) => {
-                    let p = ixm(nl.as_mut_ptr(), at);
+                CA::NL(a) => {
+                    let p = ixm(a.as_mut_ptr(), at);
                     (*p).free(clen);
                     let _ = p.read();
                 }
@@ -830,8 +830,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = &mut self.clen[at];
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => (*ixm(leaf.as_mut_ptr(), at)).pop_first(clen),
-                CA::NL(nl) => (*ixm(nl.as_mut_ptr(), at)).pop_first(clen),
+                CA::L(a) => (*ixm(a.as_mut_ptr(), at)).pop_first(clen),
+                CA::NL(a) => (*ixm(a.as_mut_ptr(), at)).pop_first(clen),
             }
         }
     }
@@ -840,8 +840,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = &mut self.clen[at];
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => (*ixm(leaf.as_mut_ptr(), at)).pop_last(clen),
-                CA::NL(nl) => (*ixm(nl.as_mut_ptr(), at)).pop_last(clen),
+                CA::L(a) => (*ixm(a.as_mut_ptr(), at)).pop_last(clen),
+                CA::NL(a) => (*ixm(a.as_mut_ptr(), at)).pop_last(clen),
             }
         }
     }
@@ -854,8 +854,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = self.clen[at] as usize;
         unsafe {
             match &self.c {
-                CA::L(leaf) => (*ix(leaf.as_ptr(), at)).get(clen, key),
-                CA::NL(nl) => (*ix(nl.as_ptr(), at)).get(clen, key),
+                CA::L(a) => (*ix(a.as_ptr(), at)).get(clen, key),
+                CA::NL(a) => (*ix(a.as_ptr(), at)).get(clen, key),
             }
         }
     }
@@ -868,8 +868,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = self.clen[at] as usize;
         unsafe {
             match &self.c {
-                CA::L(leaf) => (*ix(leaf.as_ptr(), at)).get_key_value(clen, key),
-                CA::NL(nl) => (*ix(nl.as_ptr(), at)).get_key_value(clen, key),
+                CA::L(a) => (*ix(a.as_ptr(), at)).get_key_value(clen, key),
+                CA::NL(a) => (*ix(a.as_ptr(), at)).get_key_value(clen, key),
             }
         }
     }
@@ -882,8 +882,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = self.clen[at] as usize;
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => (*ixm(leaf.as_mut_ptr(), at)).get_mut(clen, key),
-                CA::NL(nl) => (*ixm(nl.as_mut_ptr(), at)).get_mut(clen, key),
+                CA::L(a) => (*ixm(a.as_mut_ptr(), at)).get_mut(clen, key),
+                CA::NL(a) => (*ixm(a.as_mut_ptr(), at)).get_mut(clen, key),
             }
         }
     }
@@ -895,8 +895,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = &mut self.clen[at];
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => (*ixm(leaf.as_mut_ptr(), at)).insert_kv(clen, key, x),
-                CA::NL(nl) => (*ixm(nl.as_mut_ptr(), at)).insert_kv(clen, key, x),
+                CA::L(a) => (*ixm(a.as_mut_ptr(), at)).insert_kv(clen, key, x),
+                CA::NL(a) => (*ixm(a.as_mut_ptr(), at)).insert_kv(clen, key, x),
             }
         }
     }
@@ -909,8 +909,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         let clen = &mut self.clen[at];
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => (*ixm(leaf.as_mut_ptr(), at)).remove_entry(clen, key),
-                CA::NL(nl) => (*ixm(nl.as_mut_ptr(), at)).remove_entry(clen, key),
+                CA::L(a) => (*ixm(a.as_mut_ptr(), at)).remove_entry(clen, key),
+                CA::NL(a) => (*ixm(a.as_mut_ptr(), at)).remove_entry(clen, key),
             }
         }
     }
@@ -928,12 +928,12 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         assert!(len < M);
         unsafe {
             match &mut self.c {
-                CA::L(leaf) => {
-                    let p = ixm(leaf.as_mut_ptr(), len);
+                CA::L(a) => {
+                    let p = ixm(a.as_mut_ptr(), len);
                     p.write(child.leaf());
                 }
-                CA::NL(nl) => {
-                    let p = ixm(nl.as_mut_ptr(), len);
+                CA::NL(a) => {
+                    let p = ixm(a.as_mut_ptr(), len);
                     p.write(child.non_leaf());
                 }
             }
@@ -945,15 +945,15 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         unsafe {
             let n = len - at;
             match &mut self.c {
-                CA::L(leaf) => {
-                    let p = ixm(leaf.as_mut_ptr(), at);
+                CA::L(a) => {
+                    let p = ixm(a.as_mut_ptr(), at);
                     if n > 0 {
                         ptr::copy(p, p.add(1), n);
                     }
                     p.write(child.leaf());
                 }
-                CA::NL(nl) => {
-                    let p = ixm(nl.as_mut_ptr(), at);
+                CA::NL(a) => {
+                    let p = ixm(a.as_mut_ptr(), at);
                     if n > 0 {
                         ptr::copy(p, p.add(1), n);
                     }
@@ -976,14 +976,14 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
             *len -= 1;
             let n = *len as usize - at - 1;
             match &mut self.c {
-                CA::L(leaf) => {
-                    let p = ixm(leaf.as_mut_ptr(), at);
+                CA::L(a) => {
+                    let p = ixm(a.as_mut_ptr(), at);
                     if n > 0 {
                         ptr::copy(p, p.add(1), n);
                     }
                 }
-                CA::NL(nl) => {
-                    let p = ixm(nl.as_mut_ptr(), at);
+                CA::NL(a) => {
+                    let p = ixm(a.as_mut_ptr(), at);
                     if n > 0 {
                         ptr::copy(p, p.add(1), n);
                     }
@@ -1059,14 +1059,22 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
     {
         match tree {
             Tree::L(leaf) => {
-                self.index = leaf.get_lower(len, bound);
-                self.len = len;
-                self.leaf = Some(&mut **leaf);
+                self.push_lower_leaf(len, leaf, bound);
             }
             Tree::NL(nl) => {
                 self.push_lower_nl(len, nl, bound);
             }
         }
+    }
+
+    fn push_lower_leaf<Q>(&mut self, len: usize, leaf: &mut Leaf<K, V, N>, bound: Bound<&Q>)
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        self.index = leaf.get_lower(len, bound);
+        self.len = len;
+        self.leaf = Some(leaf);
     }
 
     fn push_lower_nl<Q>(&mut self, len: usize, nl: &mut NonLeaf<K, V, N, M>, bound: Bound<&Q>)
@@ -1077,17 +1085,15 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         unsafe {
             let ix = nl.leaf.get_lower(len, bound);
             self.stack.push((nl, ix, len));
-            let clen = nl.clen[ix] as usize;
+            let len = nl.clen[ix] as usize;
             match &mut nl.c {
                 CA::L(a) => {
                     let p = ixm(a.as_mut_ptr(), ix);
-                    self.index = (*p).get_lower(clen, bound);
-                    self.len = clen;
-                    self.leaf = Some(&mut **p);
+                    self.push_lower_leaf(len, &mut *p, bound);
                 }
                 CA::NL(a) => {
                     let p = ixm(a.as_mut_ptr(), ix);
-                    self.push_lower_nl(clen, &mut *p, bound);
+                    self.push_lower_nl(len, &mut *p, bound);
                 }
             }
         }
