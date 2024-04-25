@@ -5,7 +5,9 @@ use std::mem::MaybeUninit;
 use std::ptr;
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (B) can be specified.
-/// B should be an odd number, at least 11, a good value may be 39.
+/// N should be an odd number, at least 11, a good value may be 31.
+///
+/// M must be one more than N ( once const generics are fully implemented it can go away entirely ).
 ///
 /// General guide to implementation:
 ///
