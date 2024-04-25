@@ -3,7 +3,7 @@
 ///
 /// General guide to implementation:
 ///
-/// [`BTreeMap`] has a length and a Tree, where Tree is an enum that can be Leaf or `NonLeaf`.
+/// [`BTreeMap`] has a length and a `Tree`, where `Tree` is an enum that can be `Leaf` or `NonLeaf`.
 ///
 /// The [Entry] API is implemented using [`CursorMut`].
 ///
@@ -443,7 +443,7 @@ impl<K, V, const B: usize> IntoIterator for BTreeMap<K, V, B> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V, B>;
 
-    /// Convert `BTreeMap` to Iterator.
+    /// Convert `BTreeMap` to [`IntoIter`].
     fn into_iter(self) -> IntoIter<K, V, B> {
         IntoIter::new(self)
     }
@@ -591,28 +591,39 @@ where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,
 {
-    // The type that our Visitor is going to produce.
     type Value = BTreeMap<K, V, B>;
 
-    // Format a message stating what data this Visitor expects to receive.
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("BTreeMap")
     }
 
-    // Deserialize MyMap from an abstract "map" provided by the
-    // Deserializer. The MapAccess input is a callback provided by
-    // the Deserializer to let us see each entry in the map.
     fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
     where
         M: MapAccess<'de>,
     {
         let mut map = BTreeMap::new();
-
-        while let Some((key, value)) = access.next_entry()? {
-            map.insert(key, value);
+        {
+            let mut c = map.lower_bound_mut(Bound::Unbounded);
+            loop {
+                if let Some((k, v)) = access.next_entry()? {
+                    if let Some(pk, _) = c.peek_prev() {
+                        if pk >= &key {
+                            map.insert(k, v);
+                            break;
+                        }
+                    }
+                    unsafe {
+                        c.insert_before_unchecked(k, v);
+                    }
+                } else {
+                    return Ok(map);
+                }
+            }
         }
-
-        Ok(map)
+        while let Some((k, v)) = access.next_entry()? {
+            map.insert(k, v);
+        }
+        return Ok(map);
     }
 }
 
@@ -697,10 +708,13 @@ impl<K, V, const B: usize> Tree<K, V, B> {
     }
 
     fn new_root(&mut self, (med, right): Split<K, V, B>) {
-        let mut nl = NonLeaf::new();
-        nl.v.push(med);
-        nl.c.push(std::mem::take(self));
-        nl.c.push(right);
+        let mut nl = NonLeafInner::new();
+        // This is ok because the vecs are new and have sufficient capacity.
+        unsafe {
+            nl.v.push(med);
+            nl.c.push(std::mem::take(self));
+            nl.c.push(right);
+        }
         *self = Tree::NL(nl);
     }
 
@@ -888,9 +902,9 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         self.0.len() == B
     }
 
-    fn get_into_iter(mut self) -> FixedCapIter<(K, V)> {
+    fn fc_iter(mut self) -> FixedCapIter<(K, V)> {
         let v = std::mem::take(&mut self.0);
-        v.get_into_iter(B)
+        v.fc_iter(B)
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -950,14 +964,20 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
             let (med, mut right) = self.split();
             if i > B / 2 {
                 i -= B / 2 + 1;
-                right.insert(i, (key, value));
+                unsafe {
+                    right.insert(i, (key, value));
+                }
             } else {
-                self.0.insert(i, (key, value));
+                unsafe {
+                    self.0.insert(i, (key, value));
+                }
             }
             let right = Tree::L(Self(right));
             x.split = Some((med, right));
         } else {
-            self.0.insert(i, (key, value));
+            unsafe {
+                self.0.insert(i, (key, value));
+            }
         }
     }
 
@@ -1056,34 +1076,46 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     }
 } // End impl Leaf
 
+/* Boxing NonLeaf saves some memory by reducing size of Tree enum */
+type NonLeaf<K, V, const B: usize> = Box<NonLeafInner<K, V, B>>;
+
 #[derive(Debug)]
-struct NonLeaf<K, V, const B: usize> {
+struct NonLeafInner<K, V, const B: usize> {
     v: PairVec<K, V, B>,
     c: TreeVec<K, V, B>,
 }
-impl<K, V, const B: usize> Drop for NonLeaf<K, V, B> {
+impl<K, V, const B: usize> Drop for NonLeafInner<K, V, B> {
     fn drop(&mut self) {
         self.v.free(B);
         self.c.free(B + 1);
     }
 }
-impl<K, V, const B: usize> NonLeaf<K, V, B> {
+impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     fn full(&self) -> bool {
         self.v.len() == B
     }
 
-    fn new() -> Self {
-        Self {
+    fn new() -> Box<Self> {
+        Box::new(Self {
             v: PairVec::new(B),
             c: TreeVec::new(B + 1),
-        }
+        })
+    }
+
+    fn split(&mut self) -> Split<K, V, B> {
+        let right = Box::new(Self {
+            v: self.v.split_off(B / 2 + 1, B),
+            c: self.c.split_off(B / 2 + 1, B + 1),
+        });
+        let med = self.v.pop().unwrap();
+        (med, Tree::NL(right))
     }
 
     #[allow(clippy::type_complexity)]
-    fn get_into_iter(mut self) -> (FixedCapIter<(K, V)>, FixedCapIter<Tree<K, V, B>>) {
+    fn fc_iter(mut self) -> (FixedCapIter<(K, V)>, FixedCapIter<Tree<K, V, B>>) {
         let v = std::mem::take(&mut self.v);
         let c = std::mem::take(&mut self.c);
-        (v.get_into_iter(B), c.get_into_iter(B + 1))
+        (v.fc_iter(B), c.fc_iter(B + 1))
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -1139,15 +1171,6 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
         }
     }
 
-    fn split(&mut self) -> Split<K, V, B> {
-        let right = Self {
-            v: self.v.split_off(B / 2 + 1, B),
-            c: self.c.split_off(B / 2 + 1, B + 1),
-        };
-        let med = self.v.pop().unwrap();
-        (med, Tree::NL(right))
-    }
-
     fn insert(&mut self, key: K, x: &mut InsertCtx<K, V, B>)
     where
         K: Ord,
@@ -1160,8 +1183,12 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
             Err(i) => {
                 self.c.ixm(i).insert(key, x);
                 if let Some((med, right)) = x.split.take() {
-                    self.v.insert(i, med);
-                    self.c.insert(i + 1, right);
+                    unsafe {
+                        self.v.insert(i, med);
+                    }
+                    unsafe {
+                        self.c.insert(i + 1, right);
+                    }
                     if self.full() {
                         x.split = Some(self.split());
                     }
@@ -1317,7 +1344,7 @@ impl<K, V, const B: usize> NonLeaf<K, V, B> {
         }
         (x, y)
     }
-} // End impl NonLeaf
+} // End impl NonLeafInner
 
 /// Error returned by [`BTreeMap::try_insert`].
 pub struct OccupiedError<'a, K, V, const B: usize>
@@ -1825,10 +1852,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree(&mut self, tree: Tree<K, V, B>, both: bool) {
         match tree {
             Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.get_into_iter());
+                self.fwd_leaf = Some(leaf.fc_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = nl.get_into_iter();
+                let (v, mut c) = nl.fc_iter();
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -1845,10 +1872,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree_back(&mut self, tree: Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.get_into_iter());
+                self.bck_leaf = Some(leaf.fc_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = nl.get_into_iter();
+                let (v, mut c) = nl.fc_iter();
                 let ct_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
                 if let Some(ct_back) = ct_back {

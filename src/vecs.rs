@@ -192,8 +192,11 @@ impl<T> FixedCapVec<T> {
         self.len == 0
     }
 
+    /// # Safety
+    ///
+    /// Capacity must be greater than len.
     #[inline]
-    pub fn push(&mut self, value: T) {
+    pub unsafe fn push(&mut self, value: T) {
         unsafe {
             self.v.set(self.len, value);
         }
@@ -210,7 +213,10 @@ impl<T> FixedCapVec<T> {
         }
     }
 
-    pub fn insert(&mut self, at: usize, value: T) {
+    /// # Safety
+    ///
+    /// Capacity must be greater than len.
+    pub unsafe fn insert(&mut self, at: usize, value: T) {
         unsafe {
             if at < self.len {
                 self.v.move_self(at, at + 1, self.len - at);
@@ -298,7 +304,7 @@ impl<T> FixedCapVec<T> {
         Err(i)
     }
 
-    pub fn get_into_iter(self, cap: usize) -> FixedCapIter<T> {
+    pub fn fc_iter(self, cap: usize) -> FixedCapIter<T> {
         FixedCapIter {
             start: 0,
             v: self,

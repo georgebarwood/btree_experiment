@@ -13,6 +13,7 @@ fn exp_clone_test() {
         c.insert_before(i, i).unwrap();
     }
     assert!(m.len() == n);
+    print_memory();
 
     for _rep in 0..REP {
         let cm = m.clone();
@@ -29,6 +30,7 @@ fn std_clone_test() {
         c.insert_before(i, i).unwrap();
     }
     assert!(m.len() == n);
+    print_memory();
 
     for _rep in 0..REP {
         let cm = m.clone();
