@@ -950,7 +950,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
 
 #[test]
 fn test() {
-    let n = 20;
+    let n = 200;
     let mut map = BTreeMap::<i32, i32, 5, 6>::new();
     for i in 0..n {
         println!("inserting {}", i);
