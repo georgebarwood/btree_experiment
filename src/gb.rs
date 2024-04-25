@@ -393,7 +393,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     /// If action returns true the walk terminates.
     pub fn walk<F, Q>(&self, start: &Q, action: &mut F) -> bool
     where
-        F: FnMut(&(K, V)) -> bool,
+        F: FnMut(&K, &V) -> bool,
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
@@ -405,7 +405,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
     /// The key can be mutated by action if it does not change the map order.
     pub fn walk_mut<F, Q>(&mut self, start: &Q, action: &mut F) -> bool
     where
-        F: FnMut(&mut (K, V)) -> bool,
+        F: FnMut(&mut K, &mut V) -> bool,
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
@@ -606,8 +606,8 @@ where
             let mut c = map.lower_bound_mut(Bound::Unbounded);
             loop {
                 if let Some((k, v)) = access.next_entry()? {
-                    if let Some(pk, _) = c.peek_prev() {
-                        if pk >= &key {
+                    if let Some((pk, _)) = c.peek_prev() {
+                        if pk >= &k {
                             map.insert(k, v);
                             break;
                         }
@@ -825,14 +825,15 @@ impl<K, V, const B: usize> Tree<K, V, B> {
 
     fn walk<F, Q>(&self, start: &Q, action: &mut F) -> bool
     where
-        F: FnMut(&(K, V)) -> bool,
+        F: FnMut(&K, &V) -> bool,
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         match self {
             Tree::L(leaf) => {
                 for i in leaf.skip(start)..leaf.0.len() {
-                    if action(leaf.0.ix(i)) {
+                    let kv = leaf.0.ix(i);
+                    if action(&kv.0, &kv.1) {
                         return true;
                     }
                 }
@@ -843,8 +844,8 @@ impl<K, V, const B: usize> Tree<K, V, B> {
                     return true;
                 }
                 for i in i..nonleaf.v.len() {
-                    let v = nonleaf.v.ix(i);
-                    if start <= v.0.borrow() && action(v) {
+                    let kv = nonleaf.v.ix(i);
+                    if start <= kv.0.borrow() && action(&kv.0, &kv.1) {
                         return true;
                     }
                     if nonleaf.c.ix(i + 1).walk(start, action) {
@@ -858,14 +859,15 @@ impl<K, V, const B: usize> Tree<K, V, B> {
 
     fn walk_mut<F, Q>(&mut self, start: &Q, action: &mut F) -> bool
     where
-        F: FnMut(&mut (K, V)) -> bool,
+        F: FnMut(&mut K, &mut V) -> bool,
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         match self {
             Tree::L(leaf) => {
                 for i in leaf.skip(start)..leaf.0.len() {
-                    if action(leaf.0.ixm(i)) {
+                    let kv = leaf.0.ixm(i);
+                    if action(&mut kv.0, &mut kv.1) {
                         return true;
                     }
                 }
@@ -876,8 +878,8 @@ impl<K, V, const B: usize> Tree<K, V, B> {
                     return true;
                 }
                 for i in i..nonleaf.v.len() {
-                    let v = nonleaf.v.ixm(i);
-                    if start <= v.0.borrow() && action(v) {
+                    let kv = nonleaf.v.ixm(i);
+                    if start <= kv.0.borrow() && action(&mut kv.0, &mut kv.1) {
                         return true;
                     }
                     if nonleaf.c.ixm(i + 1).walk_mut(start, action) {
