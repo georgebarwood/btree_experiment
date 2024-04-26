@@ -1080,6 +1080,18 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
         let (k, v) = self.0.prev()?;
         Some((&*k, v))
     }
+
+    /// Get references to the next key/value pair.
+    pub fn peek_next(&self) -> Option<(&K, &mut V)> {
+        let (k, v) = self.0.peek_next()?;
+        Some((&*k, v))
+    }
+
+    /// Get references to the previous key/value pair.
+    pub fn peek_prev(&self) -> Option<(&K, &mut V)> {
+        let (k, v) = self.0.peek_prev()?;
+        Some((&*k, v))
+    }
 }
 
 /// Cursor that allows mutation of map keys, returned by [`CursorMut::with_mutable_key`].
@@ -1201,8 +1213,8 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         }
     }
 
-    fn push_child(&mut self, nl: *mut NonLeaf<K, V, N, M>, ix: usize, len: usize) {
-        self.stack.push((nl, ix, len));
+    fn push_child(&mut self, tsp: usize, nl: *mut NonLeaf<K, V, N, M>, ix: usize, len: usize) {
+        self.stack[tsp] = (nl, ix, len);
         unsafe {
             let len = (*nl).clen[ix] as usize;
             match &mut (*nl).c {
@@ -1214,14 +1226,14 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
                 }
                 CA::NL(a) => {
                     let p = ixm(a.as_mut_ptr(), ix);
-                    self.push_child(&mut **p, 0, len);
+                    self.push_child(tsp + 1, &mut **p, 0, len);
                 }
             }
         }
     }
 
-    fn push_child_back(&mut self, nl: *mut NonLeaf<K, V, N, M>, ix: usize, len: usize) {
-        self.stack.push((nl, ix, len));
+    fn push_child_back(&mut self, tsp: usize, nl: *mut NonLeaf<K, V, N, M>, ix: usize, len: usize) {
+        self.stack[tsp] = (nl, ix, len);
         unsafe {
             let len = (*nl).clen[ix] as usize;
             match &mut (*nl).c {
@@ -1233,7 +1245,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
                 }
                 CA::NL(a) => {
                     let p = ixm(a.as_mut_ptr(), ix);
-                    self.push_child_back(&mut **p, len, len);
+                    self.push_child_back(tsp + 1, &mut **p, len, len);
                 }
             }
         }
@@ -1241,52 +1253,84 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
 
     /// Advance the cursor, returns references to the key and value of the element that it moved over.
     #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Option<(&mut K, &mut V)>
-    where
-        K: Ord,
-    {
+    pub fn next(&mut self) -> Option<(&mut K, &mut V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index < self.len {
                 self.index += 1;
                 Some((*leaf).ixm(self.index - 1))
             } else {
-                while let Some((nl, ix, len)) = self.stack.pop() {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, ix, len) = self.stack[tsp];
                     if ix < len {
-                        self.push_child(nl, ix + 1, len);
+                        self.push_child(tsp, nl, ix + 1, len);
                         return Some((*nl).leaf.ixm(ix));
                     }
                 }
-
-                let map: *mut BTreeMap<K, V, N, M> = self.map;
-                let clen = (*map).clen as usize;
-                self.push_upper(clen, &mut (*map).tree, Bound::Unbounded);
                 None
             }
         }
     }
 
     /// Move the cursor back, returns references to the key and value of the element that it moved over.
-    pub fn prev(&mut self) -> Option<(&mut K, &mut V)>
-    where
-        K: Ord,
-    {
+    pub fn prev(&mut self) -> Option<(&mut K, &mut V)> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index > 0 {
                 self.index -= 1;
                 Some((*leaf).ixm(self.index))
             } else {
-                while let Some((nl, ix, len)) = self.stack.pop() {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, ix, len) = self.stack[tsp];
                     if ix > 0 {
-                        self.push_child_back(nl, ix - 1, len);
+                        self.push_child_back(tsp, nl, ix - 1, len);
                         return Some((*nl).leaf.ixm(ix - 1));
                     }
                 }
+                None
+            }
+        }
+    }
 
-                let map: *mut BTreeMap<K, V, N, M> = self.map;
-                let clen = (*map).clen as usize;
-                self.push_lower(clen, &mut (*map).tree, Bound::Unbounded);
+    /// Get references to the next key and value.
+    pub fn peek_next(&self) -> Option<(&mut K, &mut V)> {
+        unsafe {
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index < self.len {
+                Some((*leaf).ixm(self.index))
+            } else {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, ix, len) = self.stack[tsp];
+                    if ix < len {
+                        return Some((*nl).leaf.ixm(ix));
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Get references to the previous key and value.
+    pub fn peek_prev(&self) -> Option<(&mut K, &mut V)> {
+        unsafe {
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index > 0 {
+                Some((*leaf).ixm(self.index - 1))
+            } else {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, ix, len) = self.stack[tsp];
+                    if ix > 0 {
+                        return Some((*nl).leaf.ixm(ix - 1));
+                    }
+                }
                 None
             }
         }
