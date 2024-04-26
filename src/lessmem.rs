@@ -45,6 +45,11 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
         }
     }
 
+    /// Clear the map.
+    pub fn clear(&mut self) {
+        *self = Self::new();
+    }
+
     /// Get number of key-value pairs in the map.
     pub fn len(&self) -> usize {
         self.len
@@ -69,11 +74,15 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
             Tree::NL(nl) => nl.insert_kv(&mut self.clen, key, &mut x),
         }
         if let Some(split) = x.split {
-            self.tree.new_root(self.clen, split);
-            self.clen = 1;
+            self.new_root(split);
         }
         self.len += usize::from(x.value.is_none());
         x.value
+    }
+
+    fn new_root(&mut self, split: Split<K, V, N, M>) {
+        self.tree.new_root(self.clen, split);
+        self.clen = 1;
     }
 
     /// Remove first key-value pair from map.
@@ -201,7 +210,7 @@ impl<K, V, const N: usize, const M: usize> Default for Tree<K, V, N, M> {
 
 impl<K, V, const N: usize, const M: usize> Tree<K, V, N, M> {
     fn new_root(&mut self, left_len: u8, ((k, v), right, rlen): Split<K, V, N, M>) {
-        // println!("new root!!!");
+        println!("new root!!!");
         let child_is_leaf = match right {
             Tree::L(_) => true,
             Tree::NL(_) => false,
@@ -221,6 +230,12 @@ impl<K, V, const N: usize, const M: usize> Tree<K, V, N, M> {
         }
     }
     fn non_leaf(self) -> Box<NonLeaf<K, V, N, M>> {
+        match self {
+            Tree::NL(x) => x,
+            _ => panic!(),
+        }
+    }
+    fn non_leaf_ptr(&mut self) -> &mut NonLeaf<K, V, N, M> {
         match self {
             Tree::NL(x) => x,
             _ => panic!(),
@@ -246,6 +261,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         }
     }
 
+    /// Cannot implement Drop as len needs to be a parameter.
+    /// Instead this function is called to drop any stored key-value pairs.
     fn free(&mut self, len: &mut u8) {
         while *len > 0 {
             self.pop_last(len);
@@ -269,7 +286,7 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         Q: Ord + ?Sized,
     {
         match self.search(len, |x| x.borrow().cmp(key)) {
-            Ok(i) => Some((self.ixk(i), self.ixv(i))),
+            Ok(i) => Some(self.ix(i)),
             Err(_) => None,
         }
     }
@@ -301,10 +318,11 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         let value = x.value.take().unwrap();
         if *len as usize == N {
             // Leaf is full.
-            let (med, mut right, mut rlen) = self.split(len);
+            let (med, mut right) = self.split(len);
+            let mut rlen = N / 2;
             if i > N / 2 {
                 i -= N / 2 + 1;
-                right.insert(rlen, i, key, value);
+                right.insert(N / 2, i, key, value);
                 rlen += 1;
             } else {
                 self.insert(*len as usize, i, key, value);
@@ -341,14 +359,14 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         }
     }
 
-    fn split(&mut self, len: &mut u8) -> ((K, V), Self, usize) {
-        let ix = N / 2 + 1;
-        let rlen = *len as usize - ix;
+    /// Split leaf. Each half will have length N/2
+    fn split(&mut self, len: &mut u8) -> ((K, V), Self) {
+        assert!(*len as usize == N);
         let mut right = Self::new();
-        self.mov(ix, rlen, &mut right);
-        *len = ix as u8;
+        self.mov(N / 2 + 1, N / 2, &mut right);
+        *len = (N / 2 + 1) as u8;
         let med = self.pop_last(len).unwrap();
-        (med, right, rlen)
+        (med, right)
     }
 
     fn insert(&mut self, len: usize, at: usize, key: K, val: V) {
@@ -424,7 +442,7 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         }
     }
 
-    fn iter(&self, len: usize) -> LeafIter<K, V, N> {
+    fn _iter(&self, len: usize) -> LeafIter<K, V, N> {
         LeafIter {
             leaf: self,
             fwd: 0,
@@ -432,7 +450,7 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         }
     }
 
-    fn iter_mut(&mut self, len: usize) -> LeafIterMut<K, V, N> {
+    fn _iter_mut(&mut self, len: usize) -> LeafIterMut<K, V, N> {
         let bck = len;
         LeafIterMut {
             leaf: self,
@@ -535,7 +553,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
     }
 } // end impl Leaf
 
-struct LeafIter<'a, K, V, const N: usize> {
+/// ...
+pub struct LeafIter<'a, K, V, const N: usize> {
     leaf: &'a Leaf<K, V, N>,
     fwd: usize,
     bck: usize,
@@ -572,7 +591,8 @@ impl<'a, K, V, const N: usize> DoubleEndedIterator for LeafIter<'a, K, V, N> {
     }
 }
 
-struct LeafIterMut<'a, K, V, const N: usize> {
+///...
+pub struct LeafIterMut<'a, K, V, const N: usize> {
     leaf: &'a mut Leaf<K, V, N>,
     fwd: usize,
     bck: usize,
@@ -609,7 +629,8 @@ impl<'a, K, V, const N: usize> DoubleEndedIterator for LeafIterMut<'a, K, V, N> 
     }
 }
 
-struct LeafIntoIter<K, V, const N: usize> {
+///...
+pub struct LeafIntoIter<K, V, const N: usize> {
     leaf: Leaf<K, V, N>,
     fwd: usize,
     bck: usize,
@@ -685,6 +706,8 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         }
     }
 
+    /// Cannot implement Drop as len needs to be a parameter.
+    /// Instead this function is called to drop any stored key-value pairs and child nodes.
     fn free(&mut self, len: &mut u8) {
         let n = *len as usize;
         self.leaf.free(len);
@@ -710,7 +733,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         Q: Ord + ?Sized,
     {
         match self.leaf.search(len, |x| x.borrow().cmp(key)) {
-            Ok(i) => Some((self.leaf.ixk(i), self.leaf.ixv(i))),
+            Ok(i) => Some(self.leaf.ix(i)),
             Err(i) => self.child_get_key_value(i, key),
         }
     }
@@ -793,13 +816,12 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         }
     }
 
+    // Split non-leaf
     fn split(&mut self, len: &mut u8) -> Split<K, V, N, M> {
         assert!(*len as usize == N);
         let mut right = Self::new(self.child_is_leaf());
-        let at = N / 2 + 1;
-        let rlen = N - at;
-        self.leaf.mov(at, rlen, &mut right.leaf);
-        *len = at as u8;
+        self.leaf.mov(N / 2 + 1, N / 2, &mut right.leaf);
+        *len = (N / 2 + 1) as u8;
         let med = self.leaf.pop_last(len).unwrap();
 
         let at = M / 2;
@@ -819,7 +841,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
                 CA::NL(a) => {
                     let from = ix(a.as_ptr(), at);
                     match &mut right.c {
-                        CA::NL(nl) => {
+                        CA::NL(a) => {
                             let to = ixm(a.as_mut_ptr(), 0);
                             ptr::copy_nonoverlapping(from, to, n);
                         }
@@ -831,7 +853,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         for i in 0..n {
             right.clen[i] = self.clen[at + i]
         }
-        (med, Tree::NL(Box::new(right)), rlen)
+        (med, Tree::NL(Box::new(right)), N / 2)
     }
 
     fn child_free(&mut self, at: usize) {
@@ -1022,9 +1044,6 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
     }
 } // end impl NonLeaf
 
-// Vector types.
-type StkVec<T> = arrayvec::ArrayVec<T, 15>;
-
 /// Cursor that allows mutation of map, returned by [`BTreeMap::lower_bound_mut`], [`BTreeMap::upper_bound_mut`].
 pub struct CursorMut<'a, K, V, const N: usize, const M: usize>(CursorMutKey<'a, K, V, N, M>);
 impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
@@ -1092,7 +1111,63 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
         let (k, v) = self.0.peek_prev()?;
         Some((&*k, v))
     }
+
+    /// Insert leaving cursor after newly inserted element.
+    pub fn insert_before(&mut self, key: K, value: V) -> Result<(), UnorderedKeyError>
+    where
+        K: Ord,
+    {
+        self.0.insert_before(key, value)
+    }
+
+    /// Insert leaving cursor before newly inserted element.
+    pub fn insert_after(&mut self, key: K, value: V) -> Result<(), UnorderedKeyError>
+    where
+        K: Ord,
+    {
+        self.0.insert_after(key, value)
+    }
+
+    /// Insert leaving cursor after newly inserted element.
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    pub unsafe fn insert_before_unchecked(&mut self, key: K, value: V) {
+        self.0.insert_before_unchecked(key, value);
+    }
+
+    /// Insert leaving cursor before newly inserted element.
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    pub unsafe fn insert_after_unchecked(&mut self, key: K, value: V) {
+        self.0.insert_after_unchecked(key, value);
+    }
+
+    /// Converts the cursor into a `CursorMutKey`, which allows mutating the key of elements in the tree.
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    #[must_use]
+    pub unsafe fn with_mutable_key(self) -> CursorMutKey<'a, K, V, N, M> {
+        self.0
+    }
+
+    /*
+        /// Returns a read-only cursor pointing to the same location as the `CursorMut`.
+        #[must_use]
+        pub fn as_cursor(&self) -> Cursor<'_, K, V, B> {
+            self.0.as_cursor()
+        }
+    */
+
+    /// This is needed for the implementation of the [Entry] API.
+    fn _into_mut(self) -> &'a mut V {
+        self.0._into_mut()
+    }
 }
+
+type StkVec<T> = arrayvec::ArrayVec<T, 15>;
 
 /// Cursor that allows mutation of map keys, returned by [`CursorMut::with_mutable_key`].
 pub struct CursorMutKey<'a, K, V, const N: usize, const M: usize> {
@@ -1318,7 +1393,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
                 let mut tsp = self.stack.len();
                 while tsp > 0 {
                     tsp -= 1;
-                    let (nl, ix, len) = self.stack[tsp];
+                    let (nl, ix, _len) = self.stack[tsp];
                     if ix > 0 {
                         return Some((*nl).leaf.ixm(ix - 1));
                     }
@@ -1327,7 +1402,173 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
             }
         }
     }
+
+    unsafe fn get_lenp(&mut self) -> *mut u8 {
+        let sp = self.stack.len();
+        if sp == 0 {
+            &mut (*self.map).clen
+        } else {
+            let (nl, ix, _len) = self.stack[sp - 1];
+            &mut (*nl).clen[ix]
+        }
+    }
+
+    /// After split, we need to re-calculate the leaf from the parent.
+    unsafe fn get_leaf(&mut self) -> *mut Leaf<K, V, N> {
+        let (nl, index, _len) = self.stack[self.stack.len() - 1];
+        match &mut (*nl).c {
+            CA::L(a) => &mut **ixm(a.as_mut_ptr(), index),
+            CA::NL(_) => panic!(),
+        }
+    }
+
+    /// After split, we need to re-calculate from the parent.
+    unsafe fn get_nonleaf(&mut self) -> *mut NonLeaf<K, V, N, M> {
+        let (nl, index, _len) = self.stack[self.stack.len() - 1];
+        match &mut (*nl).c {
+            CA::NL(a) => &mut **ixm(a.as_mut_ptr(), index),
+            CA::L(_) => panic!(),
+        }
+    }
+
+    /// Insert leaving cursor after newly inserted element.
+    pub fn insert_before(&mut self, key: K, value: V) -> Result<(), UnorderedKeyError>
+    where
+        K: Ord,
+    {
+        if let Some((prev, _)) = self.peek_prev() {
+            if &key <= prev {
+                println!("unordered prev!!!");
+                return Err(UnorderedKeyError {});
+            }
+        }
+        if let Some((next, _)) = self.peek_next() {
+            if &key >= next {
+                println!("unordered next!!!");
+                return Err(UnorderedKeyError {});
+            }
+        }
+        unsafe {
+            self.insert_before_unchecked(key, value);
+        }
+        Ok(())
+    }
+
+    /// Insert leaving cursor before newly inserted element.
+    pub fn insert_after(&mut self, key: K, value: V) -> Result<(), UnorderedKeyError>
+    where
+        K: Ord,
+    {
+        if let Some((prev, _)) = self.peek_prev() {
+            if &key <= prev {
+                return Err(UnorderedKeyError {});
+            }
+        }
+        if let Some((next, _)) = self.peek_next() {
+            if &key >= next {
+                return Err(UnorderedKeyError {});
+            }
+        }
+        unsafe {
+            self.insert_after_unchecked(key, value);
+        }
+        Ok(())
+    }
+
+    /// Insert leaving cursor after newly inserted element.
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    pub unsafe fn insert_before_unchecked(&mut self, key: K, value: V) {
+        self.insert_after_unchecked(key, value);
+        self.index += 1;
+    }
+
+    /// Insert leaving cursor before newly inserted element.
+    /// # Safety
+    ///
+    /// Keys must be unique and in sorted order.
+    pub unsafe fn insert_after_unchecked(&mut self, key: K, value: V) {
+        unsafe {
+            (*self.map).len += 1;
+            let mut leaf = self.leaf.unwrap_unchecked();
+            if self.index == N {
+                // Leaf is full.
+                let lenp = self.get_lenp();
+                let (med, right) = (*leaf).split(&mut *lenp);
+
+                let right = Tree::L(Box::new(right));
+                let r = usize::from(self.index > N / 2);
+                self.index -= r * (N / 2 + 1);
+                self.save_split(med, right, r);
+                self.len = N / 2;
+                leaf = self.get_leaf();
+                self.leaf = Some(leaf);
+            }
+            (*leaf).insert(self.len, self.index, key, value);
+            (*self.get_lenp()) += 1;
+            self.len += 1;
+        }
+    }
+
+    // This is called when a child has to split and there is a tree to be saved in the parent.
+    fn save_split(&mut self, med: (K, V), tree: Tree<K, V, N, M>, r: usize) {
+        let rlen = N / 2;
+        unsafe {
+            if let Some((mut nl, mut ix, mut len)) = self.stack.pop() {
+                if len == N {
+                    let lenp = self.get_lenp();
+                    assert_eq!(len, *self.get_lenp() as usize);
+                    let (med, tree, _) = (*nl).split(&mut *lenp);
+                    let r = usize::from(ix > N / 2);
+                    ix -= r * (N / 2 + 1);
+                    self.save_split(med, tree, r);
+                    nl = self.get_nonleaf();
+                    len = *self.get_lenp() as usize;
+                }
+                (*nl).leaf.insert(len, ix, med.0, med.1);
+                (*nl).insert_child(len + 1, ix + 1, rlen, tree);
+                ix += r;
+                assert!(len == *self.get_lenp() as usize);
+                *self.get_lenp() += 1;
+                len += 1;
+                self.stack.push((nl, ix, len));
+            } else {
+                (*self.map).new_root((med, tree, rlen));
+                let nl = (*self.map).tree.non_leaf_ptr();
+                self.stack.push((nl, r, 1));
+            }
+        }
+    }
+
+    /*
+        /// Returns a read-only cursor pointing to the same location as the `CursorMutKey`.
+        #[must_use]
+        pub fn as_cursor(&self) -> Cursor<'_, K, V, N, M> {
+            unsafe {
+                let mut c = Cursor::make();
+                c.index = self.index;
+                c.leaf = Some(&*self.leaf.unwrap());
+                for (nl, ix) in &self.stack {
+                    c.stack.push((&(**nl), *ix));
+                }
+                c
+            }
+        }
+    */
+
+    /// This is needed for the implementation of the [Entry] API.
+    fn _into_mut(self) -> &'a mut V {
+        unsafe {
+            let leaf = self.leaf.unwrap_unchecked();
+            (*leaf).ixvm(self.index)
+        }
+    }
 }
+
+/// Error type for [`CursorMut::insert_before`] and [`CursorMut::insert_after`].
+#[derive(Debug, Clone)]
+pub struct UnorderedKeyError {}
 
 #[test]
 fn test() {
@@ -1375,4 +1616,16 @@ fn test() {
         print!("c.prev()={:?}", kv);
     }
     println!();
+
+    map.clear();
+    let mut c = map.lower_bound_mut(Bound::Unbounded);
+
+    println!("testing cursor insert before");
+    for i in 0..50 {
+        println!("inserting {}", i);
+        c.insert_before(i, 99).unwrap();
+        println!("result of cursor insert={:?}", c.peek_prev());
+        println!("result of cursor insert next={:?}", c.peek_next());
+    }
+    println!("map len={}", map.len());
 }
