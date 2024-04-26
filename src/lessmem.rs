@@ -210,7 +210,6 @@ impl<K, V, const N: usize, const M: usize> Default for Tree<K, V, N, M> {
 
 impl<K, V, const N: usize, const M: usize> Tree<K, V, N, M> {
     fn new_root(&mut self, left_len: u8, ((k, v), right, rlen): Split<K, V, N, M>) {
-        println!("new root!!!");
         let child_is_leaf = match right {
             Tree::L(_) => true,
             Tree::NL(_) => false,
@@ -1008,13 +1007,13 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
                     p.write(child.non_leaf());
                 }
             }
-            let mut i = len;
-            while i > at + 1 {
-                i -= 1;
-                self.clen[i] = self.clen[i - 1];
-            }
-            self.clen[at] = clen as u8;
         }
+        let mut i = len;
+        while i > at {
+            self.clen[i] = self.clen[i - 1];
+            i -= 1;
+        }
+        self.clen[at] = clen as u8;
     }
 
     fn remove_child(&mut self, len: &mut u8, at: usize) {
@@ -1438,13 +1437,11 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
     {
         if let Some((prev, _)) = self.peek_prev() {
             if &key <= prev {
-                println!("unordered prev!!!");
                 return Err(UnorderedKeyError {});
             }
         }
         if let Some((next, _)) = self.peek_next() {
             if &key >= next {
-                println!("unordered next!!!");
                 return Err(UnorderedKeyError {});
             }
         }
@@ -1574,7 +1571,7 @@ pub struct UnorderedKeyError {}
 fn test() {
     let n = 30;
     let mut map = BTreeMap::<i32, i32, 5, 6>::new();
-    for i in 0..n {
+    for i in (0..n).rev() {
         print!("inserting {}", i);
         map.insert(i, i * i);
         assert_eq!(i * i, *map.get(&i).unwrap());
