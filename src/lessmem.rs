@@ -1568,7 +1568,39 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
 pub struct UnorderedKeyError {}
 
 #[test]
-fn test() {
+fn exp_mem_test()
+{
+    const N: usize = 51;
+    const M: usize = N + 1;
+    let n = 1000;
+    let mut map = BTreeMap::<u64, u64, N, M>::new();
+    for i in 0..n {
+       map.insert(i*2, i*2);
+    }
+    for i in 0..n {
+       map.insert(i*2+1, i*2+1);
+    }
+    crate::print_memory();
+    println!("Required memory: {} bytes", n * 32 );
+    println!("size of Leaf={}", std::mem::size_of::<Leaf<u64,u64,N>>() );
+}
+
+#[test]
+fn std_mem_test()
+{
+    let n = 1000;
+    let mut map = std::collections::BTreeMap::<u64, u64>::new();
+    for i in 0..n {
+       map.insert(i*2, i*2);
+    }
+    for i in 0..n {
+       map.insert(i*2+1, i*2+1);
+    }
+    crate::print_memory();
+}
+
+#[test]
+fn general_test() {
     let n = 30;
     let mut map = BTreeMap::<i32, i32, 5, 6>::new();
     for i in (0..n).rev() {

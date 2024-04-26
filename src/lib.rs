@@ -139,16 +139,18 @@ static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::max_value(
 #[cfg(test)]
 fn print_memory() {
     #[cfg(all(test, not(miri), feature = "cap"))]
-    println!("Memory allocated: {}B", ALLOCATOR.allocated());
+    println!("Memory allocated: {} bytes", ALLOCATOR.allocated());
 }
 
 /* mimalloc cannot be used with miri */
+/*
 #[cfg(all(test, not(miri), not(feature = "cap")))]
 use mimalloc::MiMalloc;
 
 #[cfg(all(test, not(miri), not(feature = "cap")))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
+*/
 
 #[cfg(test)]
 mod mytests;
