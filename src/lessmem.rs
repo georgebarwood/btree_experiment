@@ -1125,12 +1125,8 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         Q: Ord + ?Sized,
     {
         match tree {
-            Tree::L(leaf) => {
-                self.push_lower_leaf(len, leaf, bound);
-            }
-            Tree::NL(nl) => {
-                self.push_lower_nl(len, nl, bound);
-            }
+            Tree::L(leaf) => self.push_lower_leaf(len, leaf, bound),
+            Tree::NL(nl) => self.push_lower_nl(len, nl, bound),
         }
     }
 
@@ -1140,12 +1136,8 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         Q: Ord + ?Sized,
     {
         match tree {
-            Tree::L(leaf) => {
-                self.push_upper_leaf(len, leaf, bound);
-            }
-            Tree::NL(nl) => {
-                self.push_upper_nl(len, nl, bound);
-            }
+            Tree::L(leaf) => self.push_upper_leaf(len, leaf, bound),
+            Tree::NL(nl) => self.push_upper_nl(len, nl, bound),
         }
     }
 
