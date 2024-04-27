@@ -978,7 +978,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         if let Some(x) = self.child_pop_last(i) {
             self.leaf.replace(i, x)
         } else {
-            self.remove_child(len, i);
+            self.remove_child(*len as usize + 1, i);
             self.leaf.remove(len, i)
         }
     }
@@ -1000,7 +1000,6 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
     }
 
     fn insert_child(&mut self, len: usize, at: usize, clen: usize, child: Tree<K, V, N, M>) {
-        assert!(at <= len && len < M);
         unsafe {
             let n = len - at;
             match &mut self.c {
@@ -1028,23 +1027,21 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         self.clen[at] = clen as u8;
     }
 
-    fn remove_child(&mut self, len: &mut u8, at: usize) {
-        assert!(at < *len as usize);
+    fn remove_child(&mut self, len: usize, at: usize) {
         self.child_free(at);
         unsafe {
-            *len -= 1;
-            let n = *len as usize - at - 1;
+            let n = len - at - 1;
             match &mut self.c {
                 CA::L(a) => {
                     let p = ixm(a.as_mut_ptr(), at);
                     if n > 0 {
-                        ptr::copy(p, p.add(1), n);
+                        ptr::copy(p.add(1), p, n);
                     }
                 }
                 CA::NL(a) => {
                     let p = ixm(a.as_mut_ptr(), at);
                     if n > 0 {
-                        ptr::copy(p, p.add(1), n);
+                        ptr::copy(p.add(1), p, n);
                     }
                 }
             }
@@ -1614,60 +1611,58 @@ fn std_mem_test() {
 
 #[test]
 fn general_test() {
-    let n = 30;
-    let mut map = BTreeMap::<i32, i32, 5, 6>::new();
+    let n: usize = 30;
+    let mut map = BTreeMap::<usize, usize, 5, 6>::new();
     for i in (0..n).rev() {
-        print!("inserting {}", i);
-        map.insert(i, i * i);
-        assert_eq!(i * i, *map.get(&i).unwrap());
+        map.insert(i, i);
+        assert_eq!(i, *map.get(&i).unwrap());
     }
-    println!();
-    println!("map len={}", map.len());
+    assert_eq!(map.len(), n);
     for i in 0..n {
         let v = map.get_mut(&i).unwrap();
-        *v += 1;
-        print!("v[{}]={:?}", i, v);
+        assert_eq!(*v, i);
     }
-    println!();
 
-    println!("pop_last={:?}", map.pop_last());
-    println!("map len={}", map.len());
-    println!("pop_first={:?}", map.pop_first());
-    println!("map len={}", map.len());
+    assert_eq!(map.pop_last(), Some((n - 1, n - 1)));
+    assert_eq!(map.len(), n - 1);
+    assert_eq!(map.pop_first(), Some((0, 0)));
+    assert_eq!(map.len(), n - 2);
 
     let mut c = map.lower_bound_mut(Bound::Unbounded);
 
-    println!("testing cursor next...");
-    loop {
-        let kv = c.next();
-        if kv.is_none() {
-            break;
-        }
-        print!("c.next()={:?}", kv);
+    for i in 1..n - 1 {
+        let (k, v) = c.next().unwrap();
+        assert_eq!((*k, *v), (i, i));
     }
-    println!();
+    assert_eq!(c.next(), None);
 
     // let mut c = map.upper_bound_mut(Bound::Unbounded);
 
-    println!("testing cursor prev...");
-    loop {
-        let kv = c.prev();
-        if kv.is_none() {
-            break;
-        }
-        print!("c.prev()={:?}", kv);
+    for i in (1..n - 1).rev() {
+        let (k, v) = c.prev().unwrap();
+        assert_eq!((*k, *v), (i, i));
     }
-    println!();
 
     map.clear();
     let mut c = map.lower_bound_mut(Bound::Unbounded);
 
-    println!("testing cursor insert before");
     for i in 0..50 {
-        println!("inserting {}", i);
-        c.insert_before(i, 99).unwrap();
-        println!("result of cursor insert={:?}", c.peek_prev());
-        println!("result of cursor insert next={:?}", c.peek_next());
+        c.insert_before(i, i).unwrap();
+        let (k, v) = c.peek_prev().unwrap();
+        assert_eq!((*k, *v), (i, i));
+        assert_eq!(c.peek_next(), None);
     }
-    println!("map len={}", map.len());
+    assert_eq!(map.len(), 50);
+
+    for i in 0..50 {
+        assert_eq!(map.get(&i).unwrap(), &i);
+    }
+
+    println!("testing remove");
+    for i in 0..50 {
+        let v = map.remove(&i).unwrap();
+        assert_eq!(v, i);
+    }
+
+    assert_eq!(map.len(), 0);
 }
