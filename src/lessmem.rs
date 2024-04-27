@@ -1,13 +1,19 @@
-use std::borrow::Borrow;
-use std::cmp::Ordering;
-use std::marker::PhantomData;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ops::Bound;
-use std::ptr;
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    // fmt,
+    // fmt::Debug,
+    iter::FusedIterator,
+    marker::PhantomData,
+    mem,
+    mem::MaybeUninit,
+    ops::{Bound /*, RangeBounds*/},
+    ptr,
+};
 
-/// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (B) can be specified.
-/// N should be an odd number, at least 11, a good value may be 31.
+/// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (N) can be specified.
+///
+/// N must be an odd number, at least 11, less than 255, good values to try might be 15, 23, 31, 39, 47.
 ///
 /// M must be one more than N ( once const generics are fully implemented it can go away entirely ).
 ///
@@ -45,6 +51,11 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
         }
     }
 
+    fn new_root(&mut self, split: Split<K, V, N, M>) {
+        self.tree.new_root(self.clen, split);
+        self.clen = 1;
+    }
+
     /// Clear the map.
     pub fn clear(&mut self) {
         *self = Self::new();
@@ -68,6 +79,51 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
         self.len == 0
     }
 
+    /// Get Entry for map key.
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V, N, M>
+    where
+        K: Ord,
+    {
+        let cursor = self.lower_bound_mut(Bound::Included(&key));
+        let found = if let Some(kv) = cursor.peek_next() {
+            kv.0 == &key
+        } else {
+            false
+        };
+        if found {
+            Entry::Occupied(OccupiedEntry { cursor })
+        } else {
+            Entry::Vacant(VacantEntry { key, cursor })
+        }
+    }
+
+    /// Get first Entry.
+    pub fn first_entry(&mut self) -> Option<OccupiedEntry<'_, K, V, N, M>>
+    where
+        K: Ord,
+    {
+        if self.is_empty() {
+            None
+        } else {
+            let cursor = self.lower_bound_mut(Bound::Unbounded);
+            Some(OccupiedEntry { cursor })
+        }
+    }
+
+    /// Get last Entry.
+    pub fn last_entry(&mut self) -> Option<OccupiedEntry<'_, K, V, N, M>>
+    where
+        K: Ord,
+    {
+        if self.is_empty() {
+            None
+        } else {
+            let mut cursor = self.upper_bound_mut(Bound::Unbounded);
+            cursor.prev();
+            Some(OccupiedEntry { cursor })
+        }
+    }
+
     /// Insert key-value pair into map, or if key is already in map, replaces value and returns old value.
     pub fn insert(&mut self, key: K, value: V) -> Option<V>
     where
@@ -88,9 +144,28 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
         x.value
     }
 
-    fn new_root(&mut self, split: Split<K, V, N, M>) {
-        self.tree.new_root(self.clen, split);
-        self.clen = 1;
+    /// Tries to insert a key-value pair into the map, and returns
+    /// a mutable reference to the value in the entry.
+    ///
+    /// If the map already had this key present, nothing is updated, and
+    /// an error containing the occupied entry and the value is returned.
+    pub fn try_insert(&mut self, key: K, value: V) -> Result<&mut V, OccupiedError<'_, K, V, N, M>>
+    where
+        K: Ord,
+    {
+        match self.entry(key) {
+            Entry::Occupied(entry) => Err(OccupiedError { entry, value }),
+            Entry::Vacant(entry) => Ok(entry.insert(value)),
+        }
+    }
+
+    /// Does the map have an entry for the specified key.
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        self.get_key_value(key).is_some()
     }
 
     /// Remove first key-value pair from map.
@@ -215,7 +290,16 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
     {
         Cursor::upper_bound(self, bound)
     }
-}
+
+    /// Get iterator of references to key-value pairs.
+    #[must_use]
+    pub fn iter(&self) -> Iter<'_, K, V, N, M> {
+        Iter {
+            len: self.len,
+            inner: self.tree.iter(&self.clen),
+        }
+    }
+} // end impl BTreeMap
 
 impl<K, V, const N: usize, const M: usize> Default for BTreeMap<K, V, N, M> {
     fn default() -> Self {
@@ -267,6 +351,15 @@ impl<K, V, const N: usize, const M: usize> Tree<K, V, N, M> {
             Tree::NL(x) => x,
             _ => panic!(),
         }
+    }
+    fn iter<'a>(&'a self, clen: &'a u8) -> Range<'a, K, V, N, M> {
+        let mut x = Range::new();
+        let tr = match self {
+            Tree::L(x) => TreeRef::L(x, clen),
+            Tree::NL(x) => TreeRef::NL(x, clen),
+        };
+        x.push_tree(tr, true);
+        x
     }
 } // end impl Tree
 
@@ -477,11 +570,11 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         }
     }
 
-    fn _iter(&self, len: usize) -> LeafIter<K, V, N> {
+    fn iter(&self, len: &u8) -> LeafIter<K, V, N> {
         LeafIter {
             leaf: self,
             fwd: 0,
-            bck: len,
+            bck: *len as usize,
         }
     }
 
@@ -593,6 +686,12 @@ pub struct LeafIter<'a, K, V, const N: usize> {
     leaf: &'a Leaf<K, V, N>,
     fwd: usize,
     bck: usize,
+}
+
+impl<'a, K, V, const N: usize> LeafIter<'a, K, V, N> {
+    fn len(&self) -> usize {
+        self.bck - self.fwd
+    }
 }
 
 impl<'a, K, V, const N: usize> Iterator for LeafIter<'a, K, V, N> {
@@ -709,6 +808,256 @@ impl<K, V, const N: usize> DoubleEndedIterator for LeafIntoIter<K, V, N> {
     }
 }
 
+enum ChildIter<'a, K, V, const N: usize, const M: usize> {
+    L(
+        std::slice::Iter<'a, Box<Leaf<K, V, N>>>,
+        std::slice::Iter<'a, u8>,
+    ),
+    NL(
+        std::slice::Iter<'a, Box<NonLeaf<K, V, N, M>>>,
+        std::slice::Iter<'a, u8>,
+    ),
+}
+
+enum TreeRef<'a, K, V, const N: usize, const M: usize> {
+    L(&'a Leaf<K, V, N>, &'a u8),
+    NL(&'a NonLeaf<K, V, N, M>, &'a u8),
+}
+
+impl<'a, K, V, const N: usize, const M: usize> ChildIter<'a, K, V, N, M> {
+    fn len(&self) -> usize {
+        match self {
+            ChildIter::L(_, n) => n.len(),
+            ChildIter::NL(_, n) => n.len(),
+        }
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> Iterator for ChildIter<'a, K, V, N, M> {
+    type Item = TreeRef<'a, K, V, N, M>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ChildIter::L(x, n) => Some(TreeRef::L(x.next()?, n.next()?)),
+            ChildIter::NL(x, n) => Some(TreeRef::NL(x.next()?, n.next()?)),
+        }
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> DoubleEndedIterator for ChildIter<'a, K, V, N, M> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self {
+            ChildIter::L(x, n) => Some(TreeRef::L(x.next_back()?, n.next_back()?)),
+            ChildIter::NL(x, n) => Some(TreeRef::NL(x.next_back()?, n.next_back()?)),
+        }
+    }
+}
+
+enum _ChildIterMut<'a, K, V, const N: usize, const M: usize> {
+    L(std::slice::IterMut<'a, Box<Leaf<K, V, N>>>),
+    NL(std::slice::IterMut<'a, Box<NonLeaf<K, V, N, M>>>),
+}
+
+//#[derive(Clone, Debug)]
+struct Stk<'a, K, V, const N: usize, const M: usize> {
+    v: LeafIter<'a, K, V, N>,
+    c: ChildIter<'a, K, V, N, M>,
+}
+
+/// Iterator returned by [`BTreeMap::range`].
+//#[derive(Clone, Debug, Default)]
+pub struct Range<'a, K, V, const N: usize, const M: usize> {
+    fwd_leaf: Option<LeafIter<'a, K, V, N>>,
+    bck_leaf: Option<LeafIter<'a, K, V, N>>,
+    fwd_stk: StkVec<Stk<'a, K, V, N, M>>,
+    bck_stk: StkVec<Stk<'a, K, V, N, M>>,
+}
+impl<'a, K, V, const N: usize, const M: usize> Range<'a, K, V, N, M> {
+    fn new() -> Self {
+        Self {
+            fwd_leaf: None,
+            bck_leaf: None,
+            fwd_stk: StkVec::new(),
+            bck_stk: StkVec::new(),
+        }
+    }
+
+    fn push_tree(&mut self, tree: TreeRef<'a, K, V, N, M>, both: bool) {
+        match tree {
+            TreeRef::L(leaf, len) => {
+                self.fwd_leaf = Some(leaf.iter(len));
+            }
+            TreeRef::NL(nl, len) => {
+                let (v, mut c) = (nl.leaf.iter(len), nl.child_iter(len));
+                let ct = c.next();
+                let ct_back = if both { c.next_back() } else { None };
+                let both = both && ct_back.is_none();
+                self.fwd_stk.push(Stk { v, c });
+                if let Some(ct) = ct {
+                    self.push_tree(ct, both);
+                }
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
+                }
+            }
+        }
+    }
+
+    fn push_tree_back(&mut self, tree: TreeRef<'a, K, V, N, M>) {
+        match tree {
+            TreeRef::L(leaf, len) => {
+                self.bck_leaf = Some(leaf.iter(len));
+            }
+            TreeRef::NL(nl, len) => {
+                let (v, mut c) = (nl.leaf.iter(len), nl.child_iter(len));
+                let ct_back = c.next_back();
+                self.bck_stk.push(Stk { v, c });
+                if let Some(ct_back) = ct_back {
+                    self.push_tree_back(ct_back);
+                }
+            }
+        }
+    }
+    fn steal_bck(&mut self) -> StealResult<'a, K, V, N, M> {
+        for s in &mut self.bck_stk {
+            if s.v.len() > s.c.len() {
+                return StealResult::KV(s.v.next().unwrap());
+            } else if let Some(ct) = s.c.next() {
+                return StealResult::CT(ct);
+            }
+        }
+        StealResult::Nothing
+    }
+    fn steal_fwd(&mut self) -> StealResult<'a, K, V, N, M> {
+        for s in &mut self.fwd_stk {
+            if s.v.len() > s.c.len() {
+                return StealResult::KV(s.v.next_back().unwrap());
+            } else if let Some(ct) = s.c.next_back() {
+                return StealResult::CT(ct);
+            }
+        }
+        StealResult::Nothing
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> Iterator for Range<'a, K, V, N, M> {
+    type Item = (&'a K, &'a V);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(f) = &mut self.fwd_leaf {
+                if let Some(x) = f.next() {
+                    return Some(x);
+                }
+                self.fwd_leaf = None;
+            } else if let Some(s) = self.fwd_stk.last_mut() {
+                if let Some(kv) = s.v.next() {
+                    if let Some(ct) = s.c.next() {
+                        self.push_tree(ct, false);
+                    }
+                    return Some(kv);
+                }
+                self.fwd_stk.pop();
+            } else {
+                match self.steal_bck() {
+                    StealResult::KV(kv) => {
+                        return Some(kv);
+                    }
+                    StealResult::CT(ct) => {
+                        self.push_tree(ct, false);
+                    }
+                    StealResult::Nothing => {
+                        if let Some(f) = &mut self.bck_leaf {
+                            if let Some(x) = f.next() {
+                                return Some(x);
+                            }
+                            self.bck_leaf = None;
+                        }
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> DoubleEndedIterator for Range<'a, K, V, N, M> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(f) = &mut self.bck_leaf {
+                if let Some(x) = f.next_back() {
+                    return Some(x);
+                }
+                self.bck_leaf = None;
+            } else if let Some(s) = self.bck_stk.last_mut() {
+                if let Some(kv) = s.v.next_back() {
+                    if let Some(ct) = s.c.next_back() {
+                        self.push_tree_back(ct);
+                    }
+                    return Some(kv);
+                }
+                self.bck_stk.pop();
+            } else {
+                match self.steal_fwd() {
+                    StealResult::KV(kv) => {
+                        return Some(kv);
+                    }
+                    StealResult::CT(ct) => {
+                        self.push_tree_back(ct);
+                    }
+                    StealResult::Nothing => {
+                        if let Some(f) = &mut self.fwd_leaf {
+                            if let Some(x) = f.next_back() {
+                                return Some(x);
+                            }
+                            self.fwd_leaf = None;
+                        }
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> FusedIterator for Range<'a, K, V, N, M> {}
+
+enum StealResult<'a, K, V, const N: usize, const M: usize> {
+    KV((&'a K, &'a V)),          // Key-value pair.
+    CT(TreeRef<'a, K, V, N, M>), // Child Tree.
+    Nothing,
+}
+
+/// Iterator returned by [`BTreeMap::iter`].
+// #[derive(Clone, Debug, Default)]
+pub struct Iter<'a, K, V, const N: usize, const M: usize> {
+    len: usize,
+    inner: Range<'a, K, V, N, M>,
+}
+impl<'a, K, V, const N: usize, const M: usize> Iterator for Iter<'a, K, V, N, M> {
+    type Item = (&'a K, &'a V);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            self.inner.next()
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> ExactSizeIterator for Iter<'a, K, V, N, M> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> DoubleEndedIterator for Iter<'a, K, V, N, M> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            self.inner.next_back()
+        }
+    }
+}
+impl<'a, K, V, const N: usize, const M: usize> FusedIterator for Iter<'a, K, V, N, M> {}
+
 enum CA<K, V, const N: usize, const M: usize> {
     L(MaybeUninit<[Box<Leaf<K, V, N>>; M]>),
     NL(MaybeUninit<[Box<NonLeaf<K, V, N, M>>; M]>),
@@ -721,8 +1070,30 @@ struct NonLeaf<K, V, const N: usize, const M: usize> {
 }
 
 impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
+    fn child_iter(&self, n: &u8) -> ChildIter<K, V, N, M> {
+        let n = *n as usize + 1;
+        unsafe {
+            let len = self.clen[0..n].iter();
+            match &self.c {
+                CA::L(a) => ChildIter::L((*a.as_ptr())[0..n].iter(), len),
+                CA::NL(a) => ChildIter::NL((*a.as_ptr())[0..n].iter(), len),
+            }
+        }
+    }
+
+    /*
+        fn child_iter_mut<'a>(&mut self, n: usize) -> ChildIterMut<'a, K, V, N, M> {
+            unsafe {
+                match &mut self.c {
+                    CA::L(a) => ChildIterMut::L((*a.as_mut_ptr())[0..n].iter_mut()),
+                    CA::NL(a) => ChildIterMut::NL((*a.as_mut_ptr())[0..n].iter_mut()),
+                }
+            }
+        }
+    */
+
     fn print_clen(&self, n: usize) {
-        println!("clen({})={:?}", n + 1, &self.clen[0..n]);
+        println!("clen({})={:?}", n + 1, &self.clen[0..n + 1]);
     }
 
     fn new(child_is_leaf: bool) -> Self {
@@ -1196,8 +1567,8 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
     }
 
     /// This is needed for the implementation of the [Entry] API.
-    fn _into_mut(self) -> &'a mut V {
-        self.0._into_mut()
+    fn into_mut(self) -> &'a mut V {
+        self.0.into_mut()
     }
 }
 
@@ -1632,7 +2003,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
     }
 
     /// This is needed for the implementation of the [Entry] API.
-    fn _into_mut(self) -> &'a mut V {
+    fn into_mut(self) -> &'a mut V {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             (*leaf).ixvm(self.index)
@@ -1906,9 +2277,177 @@ impl<'a, K, V, const N: usize, const M: usize> Cursor<'a, K, V, N, M> {
 #[derive(Debug, Clone)]
 pub struct UnorderedKeyError {}
 
+/// Error returned by [`BTreeMap::try_insert`].
+pub struct OccupiedError<'a, K, V, const N: usize, const M: usize>
+where
+    K: 'a,
+    V: 'a,
+{
+    /// Occupied entry, has the key that was not inserted.
+    pub entry: OccupiedEntry<'a, K, V, N, M>,
+    /// Value that was not inserted.
+    pub value: V,
+}
+
+/// Entry in `BTreeMap`, returned by [`BTreeMap::entry`].
+pub enum Entry<'a, K, V, const N: usize, const M: usize> {
+    /// Vacant entry - map doesn't yet contain key.
+    Vacant(VacantEntry<'a, K, V, N, M>),
+    /// Occupied entry - map already contains key.
+    Occupied(OccupiedEntry<'a, K, V, N, M>),
+}
+impl<'a, K, V, const N: usize, const M: usize> Entry<'a, K, V, N, M>
+where
+    K: Ord,
+{
+    /// Get reference to entry key.
+    pub fn key(&self) -> &K {
+        match self {
+            Entry::Vacant(e) => &e.key,
+            Entry::Occupied(e) => e.key(),
+        }
+    }
+
+    /// Insert default value, returning mutable reference to inserted value.
+    pub fn or_default(self) -> &'a mut V
+    where
+        V: Default,
+    {
+        match self {
+            Entry::Vacant(e) => e.insert(Default::default()),
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Insert value, returning mutable reference to inserted value.
+    pub fn or_insert(self, value: V) -> &'a mut V {
+        match self {
+            Entry::Vacant(e) => e.insert(value),
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Insert default value obtained from function, returning mutable reference to inserted value.
+    pub fn or_insert_with<F>(self, default: F) -> &'a mut V
+    where
+        F: FnOnce() -> V,
+    {
+        match self {
+            Entry::Vacant(e) => e.insert(default()),
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Insert default value obtained from function called with key, returning mutable reference to inserted value.
+    pub fn or_insert_with_key<F>(self, default: F) -> &'a mut V
+    where
+        F: FnOnce(&K) -> V,
+    {
+        match self {
+            Entry::Vacant(e) => {
+                let value = default(e.key());
+                e.insert(value)
+            }
+            Entry::Occupied(e) => e.into_mut(),
+        }
+    }
+
+    /// Modify existing value ( if entry is occupied ).
+    pub fn and_modify<F>(mut self, f: F) -> Entry<'a, K, V, N, M>
+    where
+        F: FnOnce(&mut V),
+    {
+        match &mut self {
+            Entry::Vacant(_e) => {}
+            Entry::Occupied(e) => {
+                let v = e.get_mut();
+                f(v);
+            }
+        }
+        self
+    }
+}
+
+/// Vacant [Entry].
+pub struct VacantEntry<'a, K, V, const N: usize, const M: usize> {
+    key: K,
+    cursor: CursorMut<'a, K, V, N, M>,
+}
+
+impl<'a, K, V, const N: usize, const M: usize> VacantEntry<'a, K, V, N, M>
+where
+    K: Ord,
+{
+    /// Get reference to entry key.
+    pub fn key(&self) -> &K {
+        &self.key
+    }
+
+    /// Get entry key.
+    pub fn into_key(self) -> K {
+        self.key
+    }
+
+    /// Insert value into map returning reference to inserted value.
+    pub fn insert(mut self, value: V) -> &'a mut V {
+        unsafe { self.cursor.insert_after_unchecked(self.key, value) };
+        self.cursor.into_mut()
+    }
+}
+
+/// Occupied [Entry].
+pub struct OccupiedEntry<'a, K, V, const N: usize, const M: usize> {
+    cursor: CursorMut<'a, K, V, N, M>,
+}
+
+impl<'a, K, V, const N: usize, const M: usize> OccupiedEntry<'a, K, V, N, M>
+where
+    K: Ord,
+{
+    /// Get reference to entry key.
+    #[must_use]
+    pub fn key(&self) -> &K {
+        self.cursor.peek_next().unwrap().0
+    }
+
+    /// Remove (key,value) from map, returning key and value.
+    #[must_use]
+    pub fn remove_entry(mut self) -> (K, V) {
+        self.cursor.remove_next().unwrap()
+    }
+
+    /// Remove (key,value) from map, returning the value.
+    #[must_use]
+    pub fn remove(self) -> V {
+        self.remove_entry().1
+    }
+
+    /// Get reference to the value.
+    #[must_use]
+    pub fn get(&self) -> &V {
+        self.cursor.peek_next().unwrap().1
+    }
+
+    /// Get mutable reference to the value.
+    pub fn get_mut(&mut self) -> &mut V {
+        self.cursor.peek_next().unwrap().1
+    }
+
+    /// Get mutable reference to the value, consuming the entry.
+    #[must_use]
+    pub fn into_mut(self) -> &'a mut V {
+        self.cursor.into_mut()
+    }
+
+    /// Update the value returns the old value.
+    pub fn insert(&mut self, value: V) -> V {
+        std::mem::replace(self.get_mut(), value)
+    }
+}
+
 #[test]
 fn exp_mem_test() {
-    const N: usize = 55;
+    const N: usize = 47;
     const M: usize = N + 1;
     let n = 1000;
     let mut map = BTreeMap::<u64, u64, N, M>::new();
@@ -1992,6 +2531,11 @@ fn general_test() {
 
     for i in 0..50 {
         assert_eq!(map.get(&i).unwrap(), &i);
+    }
+
+    for (i, x) in map.iter().enumerate() {
+        assert_eq!(&i, x.0);
+        assert_eq!(&i, x.1);
     }
 
     let mut c = map.lower_bound_mut(Bound::Unbounded);
