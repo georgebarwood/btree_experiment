@@ -343,7 +343,7 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
                 self.insert(*len as usize, i, key, value);
                 *len += 1;
             }
-            let right = Tree::L(Box::new(right));
+            let right = Tree::L(right);
             x.split = Some((med, right, rlen));
         } else {
             self.insert(*len as usize, i, key, value);
@@ -375,9 +375,9 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
     }
 
     /// Split leaf. Each half will have length N/2
-    fn split(&mut self, len: &mut u8) -> ((K, V), Self) {
+    fn split(&mut self, len: &mut u8) -> ((K, V), Box<Self>) {
         assert!(*len as usize == N);
-        let mut right = Self::new();
+        let mut right = Box::new(Self::new());
         self.mov(N / 2 + 1, N / 2, &mut right);
         *len = (N / 2 + 1) as u8;
         let med = self.pop_last(len).unwrap();
@@ -815,7 +815,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         Q: Ord + ?Sized,
     {
         match self.leaf.search(*len as usize, |x| x.borrow().cmp(key)) {
-            Ok(i) => Some(self.remove_at(len, i)),
+            Ok(i) => Some(self.remove_at(len, i).0),
             Err(i) => self.child_remove(i, key),
         }
     }
@@ -974,12 +974,12 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         }
     }
 
-    fn remove_at(&mut self, len: &mut u8, i: usize) -> (K, V) {
+    fn remove_at(&mut self, len: &mut u8, i: usize) -> ((K, V), usize) {
         if let Some(x) = self.child_pop_last(i) {
-            self.leaf.replace(i, x)
+            (self.leaf.replace(i, x), 0)
         } else {
             self.remove_child(*len as usize + 1, i);
-            self.leaf.remove(len, i)
+            (self.leaf.remove(len, i), 1)
         }
     }
 
@@ -1347,6 +1347,41 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         }
     }
 
+    /// Remove next element.
+    pub fn remove_next(&mut self) -> Option<(K, V)> {
+        unsafe {
+            let leaf = self.leaf.unwrap_unchecked();
+            if self.index < self.len {
+                (*self.map).len -= 1;
+                self.len -= 1;
+                let lenp = self.get_lenp();
+                Some((*leaf).remove(&mut *lenp, self.index))
+            } else {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, mut ix, mut len) = self.stack[tsp];
+                    if ix < len {
+                        (*self.map).len -= 1;
+                        let lenp = self.get_lenp2(tsp);
+                        let (kv, removed) = (*nl).remove_at(&mut *lenp, ix);
+                        ix += 1 - removed;
+                        len -= removed;
+                        self.push_child(tsp, nl, ix, len);
+                        return Some(kv);
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Remove previous element.
+    pub fn remove_prev(&mut self) -> Option<(K, V)> {
+        self.prev()?;
+        self.remove_next()
+    }
+
     /// Move the cursor back, returns references to the key and value of the element that it moved over.
     pub fn prev(&mut self) -> Option<(&mut K, &mut V)> {
         unsafe {
@@ -1411,6 +1446,15 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
 
     unsafe fn get_lenp(&mut self) -> *mut u8 {
         let sp = self.stack.len();
+        if sp == 0 {
+            &mut (*self.map).clen
+        } else {
+            let (nl, ix, _len) = self.stack[sp - 1];
+            &mut (*nl).clen[ix]
+        }
+    }
+
+    unsafe fn get_lenp2(&mut self, sp: usize) -> *mut u8 {
         if sp == 0 {
             &mut (*self.map).clen
         } else {
@@ -1501,7 +1545,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
                 let lenp = self.get_lenp();
                 let (med, right) = (*leaf).split(&mut *lenp);
 
-                let right = Tree::L(Box::new(right));
+                let right = Tree::L(right);
                 let r = usize::from(self.index > N / 2);
                 self.index -= r * (N / 2 + 1);
                 self.save_split(med, right, r);
