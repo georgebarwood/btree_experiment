@@ -741,8 +741,7 @@ impl<'a, K, V, const N: usize> DoubleEndedIterator for LeafIter<'a, K, V, N> {
     }
 }
 
-/// ...
-pub struct LeafIterMut<'a, K, V, const N: usize> {
+struct LeafIterMut<'a, K, V, const N: usize> {
     leaf: &'a mut Leaf<K, V, N>,
     fwd: usize,
     bck: usize,
@@ -1338,30 +1337,6 @@ struct NonLeaf<K, V, const N: usize, const M: usize> {
 }
 
 impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
-    fn iter(&self, len: &u8) -> (LeafIter<K, V, N>, ChildIter<K, V, N, M>) {
-        let n = *len as usize + 1;
-        let ci = unsafe {
-            let len = self.clen[0..n].iter();
-            match &self.c {
-                CA::L(a) => ChildIter::L((*a.as_ptr())[0..n].iter(), len),
-                CA::NL(a) => ChildIter::NL((*a.as_ptr())[0..n].iter(), len),
-            }
-        };
-        (self.leaf.iter(len), ci)
-    }
-
-    fn iter_mut(&mut self, len: &u8) -> (LeafIterMut<K, V, N>, ChildIterMut<K, V, N, M>) {
-        let n = *len as usize + 1;
-        let cim = unsafe {
-            let len = self.clen[0..n].iter();
-            match &mut self.c {
-                CA::L(a) => ChildIterMut::L((*a.as_mut_ptr())[0..n].iter_mut(), len),
-                CA::NL(a) => ChildIterMut::NL((*a.as_mut_ptr())[0..n].iter_mut(), len),
-            }
-        };
-        (self.leaf.iter_mut(len), cim)
-    }
-
     fn print_clen(&self, n: usize) {
         println!("clen({})={:?}", n + 1, &self.clen[0..n + 1]);
     }
@@ -1710,6 +1685,30 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
                 self.clen[i] = self.clen[i + 1];
             }
         }
+    }
+
+    fn iter(&self, len: &u8) -> (LeafIter<K, V, N>, ChildIter<K, V, N, M>) {
+        let n = *len as usize + 1;
+        let ci = unsafe {
+            let lit = self.clen[0..n].iter();
+            match &self.c {
+                CA::L(a) => ChildIter::L((*a.as_ptr())[0..n].iter(), lit),
+                CA::NL(a) => ChildIter::NL((*a.as_ptr())[0..n].iter(), lit),
+            }
+        };
+        (self.leaf.iter(len), ci)
+    }
+
+    fn iter_mut(&mut self, len: &u8) -> (LeafIterMut<K, V, N>, ChildIterMut<K, V, N, M>) {
+        let n = *len as usize + 1;
+        let cim = unsafe {
+            let lit = self.clen[0..n].iter();
+            match &mut self.c {
+                CA::L(a) => ChildIterMut::L((*a.as_mut_ptr())[0..n].iter_mut(), lit),
+                CA::NL(a) => ChildIterMut::NL((*a.as_mut_ptr())[0..n].iter_mut(), lit),
+            }
+        };
+        (self.leaf.iter_mut(len), cim)
     }
 } // end impl NonLeaf
 
