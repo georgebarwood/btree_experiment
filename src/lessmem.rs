@@ -50,6 +50,14 @@ impl<K, V, const N: usize, const M: usize> BTreeMap<K, V, N, M> {
         *self = Self::new();
     }
 
+    /// Print node lengths ( only goes down 1 level ).
+    pub fn print_clen(&self) {
+        match &self.tree {
+            Tree::L(_) => println!("clen={}", self.clen),
+            Tree::NL(nl) => nl.print_clen(self.clen as usize),
+        };
+    }
+
     /// Get number of key-value pairs in the map.
     pub fn len(&self) -> usize {
         self.len
@@ -240,6 +248,14 @@ impl<K, V, const N: usize, const M: usize> Tree<K, V, N, M> {
             _ => panic!(),
         }
     }
+} // end impl Tree
+
+unsafe fn ix<T>(p: *const [T], ix: usize) -> *const T {
+    p.cast::<T>().add(ix)
+}
+
+unsafe fn ixm<T>(p: *mut [T], ix: usize) -> *mut T {
+    p.cast::<T>().add(ix)
 }
 
 struct InsertCtx<K, V, const N: usize, const M: usize> {
@@ -285,7 +301,7 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         Q: Ord + ?Sized,
     {
         match self.search(len, |x| x.borrow().cmp(key)) {
-            Ok(i) => Some(self.ix(i)),
+            Ok(i) => Some(self.kv(i)),
             Err(_) => None,
         }
     }
@@ -349,11 +365,11 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
     /// Move keys and values ( used when splitting node ).
     fn mov(&mut self, at: usize, len: usize, to: &mut Self) {
         unsafe {
-            let kp = self.keys.as_ptr().cast::<K>().add(at);
-            let rkp = to.keys.as_mut_ptr().cast::<K>();
+            let kp = ix(self.keys.as_ptr(), at);
+            let rkp = ixm(to.keys.as_mut_ptr(), 0);
             ptr::copy_nonoverlapping(kp, rkp, len);
-            let vp = self.vals.as_ptr().cast::<V>().add(at);
-            let rvp = to.vals.as_mut_ptr().cast::<V>();
+            let vp = ix(self.vals.as_ptr(), at);
+            let rvp = ixm(to.vals.as_mut_ptr(), 0);
             ptr::copy_nonoverlapping(vp, rvp, len);
         }
     }
@@ -372,8 +388,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         assert!(at <= len && len < N);
         let n = len - at;
         unsafe {
-            let kp = self.keys.as_mut_ptr().cast::<K>().add(at);
-            let vp = self.vals.as_mut_ptr().cast::<V>().add(at);
+            let kp = ixm(self.keys.as_mut_ptr(), at);
+            let vp = ixm(self.vals.as_mut_ptr(), at);
             if n > 0 {
                 ptr::copy(kp, kp.add(1), n);
                 ptr::copy(vp, vp.add(1), n);
@@ -387,8 +403,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
         assert!(at < *len as usize);
         *len -= 1;
         unsafe {
-            let kp = self.keys.as_mut_ptr().cast::<K>().add(at);
-            let vp = self.vals.as_mut_ptr().cast::<V>().add(at);
+            let kp = ixm(self.keys.as_mut_ptr(), at);
+            let vp = ixm(self.vals.as_mut_ptr(), at);
             let result = (kp.read(), vp.read());
             let n = *len as usize - at;
             if n > 0 {
@@ -401,8 +417,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
 
     fn replace(&mut self, at: usize, kv: (K, V)) -> (K, V) {
         unsafe {
-            let kp = self.keys.as_mut_ptr().cast::<K>().add(at);
-            let vp = self.vals.as_mut_ptr().cast::<V>().add(at);
+            let kp = ixm(self.keys.as_mut_ptr(), at);
+            let vp = ixm(self.vals.as_mut_ptr(), at);
             let k = mem::replace(&mut *kp, kv.0);
             let v = mem::replace(&mut *vp, kv.1);
             (k, v)
@@ -412,8 +428,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
     fn push(&mut self, len: usize, key: K, val: V) {
         assert!(len < N);
         unsafe {
-            let kp = self.keys.as_mut_ptr().cast::<K>().add(len);
-            let vp = self.vals.as_mut_ptr().cast::<V>().add(len);
+            let kp = ixm(self.keys.as_mut_ptr(), len);
+            let vp = ixm(self.vals.as_mut_ptr(), len);
             kp.write(key);
             vp.write(val);
         }
@@ -434,8 +450,8 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
             *len -= 1;
             let len = *len as usize;
             unsafe {
-                let kp = self.keys.as_ptr().cast::<K>().add(len);
-                let vp = self.vals.as_ptr().cast::<V>().add(len);
+                let kp = ix(self.keys.as_ptr(), len);
+                let vp = ix(self.vals.as_ptr(), len);
                 Some((kp.read(), vp.read()))
             }
         }
@@ -460,41 +476,41 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
 
     /// Get reference to ith key.
     #[inline]
-    fn ixk(&self, ix: usize) -> &K {
-        unsafe { &*self.keys.as_ptr().cast::<K>().add(ix) }
+    fn ixk(&self, i: usize) -> &K {
+        unsafe { &*ix(self.keys.as_ptr(), i) }
     }
 
     /// Get mutable reference to ith key.
     #[inline]
-    fn ixkm(&mut self, ix: usize) -> &mut K {
-        unsafe { &mut *self.keys.as_mut_ptr().cast::<K>().add(ix) }
+    fn ixkm(&mut self, i: usize) -> &mut K {
+        unsafe { &mut *ixm(self.keys.as_mut_ptr(), i) }
     }
 
     /// Get reference to ith value.
     #[inline]
-    fn ixv(&self, ix: usize) -> &V {
-        unsafe { &*self.vals.as_ptr().cast::<V>().add(ix) }
+    fn ixv(&self, i: usize) -> &V {
+        unsafe { &*ix(self.vals.as_ptr(), i) }
     }
 
     /// Get mutable reference to ith value.
     #[inline]
-    fn ixvm(&mut self, ix: usize) -> &mut V {
-        unsafe { &mut *self.vals.as_mut_ptr().cast::<V>().add(ix) }
+    fn ixvm(&mut self, i: usize) -> &mut V {
+        unsafe { &mut *ixm(self.vals.as_mut_ptr(), i) }
     }
 
     /// Get references to ith key and ith value.
     #[inline]
-    fn ix(&self, ix: usize) -> (&K, &V) {
-        (self.ixk(ix), self.ixv(ix))
+    fn kv(&self, i: usize) -> (&K, &V) {
+        (self.ixk(i), self.ixv(i))
     }
 
     /// Get mutable references to ith key and ith value.
     #[inline]
-    fn ixm(&mut self, ix: usize) -> (&mut K, &mut V) {
+    fn kvm(&mut self, i: usize) -> (&mut K, &mut V) {
         unsafe {
             (
-                &mut *self.keys.as_mut_ptr().cast::<K>().add(ix),
-                &mut *self.vals.as_mut_ptr().cast::<V>().add(ix),
+                &mut *ixm(self.keys.as_mut_ptr(), i),
+                &mut *ixm(self.vals.as_mut_ptr(), i),
             )
         }
     }
@@ -566,8 +582,8 @@ impl<'a, K, V, const N: usize> Iterator for LeafIter<'a, K, V, N> {
             None
         } else {
             unsafe {
-                let kp = self.leaf.keys.as_ptr().cast::<K>().add(self.fwd);
-                let vp = self.leaf.vals.as_ptr().cast::<V>().add(self.fwd);
+                let kp = ix(self.leaf.keys.as_ptr(), self.fwd);
+                let vp = ix(self.leaf.vals.as_ptr(), self.fwd);
                 self.fwd += 1;
                 Some((&*kp, &*vp))
             }
@@ -582,15 +598,15 @@ impl<'a, K, V, const N: usize> DoubleEndedIterator for LeafIter<'a, K, V, N> {
         } else {
             unsafe {
                 self.bck -= 1;
-                let kp = self.leaf.keys.as_ptr().cast::<K>().add(self.bck);
-                let vp = self.leaf.vals.as_ptr().cast::<V>().add(self.bck);
+                let kp = ix(self.leaf.keys.as_ptr(), self.bck);
+                let vp = ix(self.leaf.vals.as_ptr(), self.bck);
                 Some((&*kp, &*vp))
             }
         }
     }
 }
 
-///...
+/// ...
 pub struct LeafIterMut<'a, K, V, const N: usize> {
     leaf: &'a mut Leaf<K, V, N>,
     fwd: usize,
@@ -604,8 +620,8 @@ impl<'a, K, V, const N: usize> Iterator for LeafIterMut<'a, K, V, N> {
             None
         } else {
             unsafe {
-                let kp = self.leaf.keys.as_mut_ptr().cast::<K>().add(self.fwd);
-                let vp = self.leaf.vals.as_mut_ptr().cast::<V>().add(self.fwd);
+                let kp = ixm(self.leaf.keys.as_mut_ptr(), self.fwd);
+                let vp = ixm(self.leaf.vals.as_mut_ptr(), self.fwd);
                 self.fwd += 1;
                 Some((&mut *kp, &mut *vp))
             }
@@ -620,15 +636,15 @@ impl<'a, K, V, const N: usize> DoubleEndedIterator for LeafIterMut<'a, K, V, N> 
         } else {
             unsafe {
                 self.bck -= 1;
-                let kp = self.leaf.keys.as_mut_ptr().cast::<K>().add(self.bck);
-                let vp = self.leaf.vals.as_mut_ptr().cast::<V>().add(self.bck);
+                let kp = ixm(self.leaf.keys.as_mut_ptr(), self.bck);
+                let vp = ixm(self.leaf.vals.as_mut_ptr(), self.bck);
                 Some((&mut *kp, &mut *vp))
             }
         }
     }
 }
 
-///...
+/// ...
 pub struct LeafIntoIter<K, V, const N: usize> {
     leaf: Leaf<K, V, N>,
     fwd: usize,
@@ -650,8 +666,8 @@ impl<K, V, const N: usize> Iterator for LeafIntoIter<K, V, N> {
             None
         } else {
             unsafe {
-                let kp = self.leaf.keys.as_ptr().cast::<K>().add(self.fwd);
-                let vp = self.leaf.vals.as_ptr().cast::<V>().add(self.fwd);
+                let kp = ix(self.leaf.keys.as_ptr(), self.fwd);
+                let vp = ix(self.leaf.vals.as_ptr(), self.fwd);
                 self.fwd += 1;
                 Some((kp.read(), vp.read()))
             }
@@ -665,20 +681,12 @@ impl<K, V, const N: usize> DoubleEndedIterator for LeafIntoIter<K, V, N> {
         } else {
             unsafe {
                 self.bck -= 1;
-                let kp = self.leaf.keys.as_ptr().cast::<K>().add(self.bck);
-                let vp = self.leaf.vals.as_ptr().cast::<V>().add(self.bck);
+                let kp = ix(self.leaf.keys.as_ptr(), self.bck);
+                let vp = ix(self.leaf.vals.as_ptr(), self.bck);
                 Some((kp.read(), vp.read()))
             }
         }
     }
-}
-
-unsafe fn ix<T>(p: *const [T], ix: usize) -> *const T {
-    p.cast::<T>().add(ix)
-}
-
-unsafe fn ixm<T>(p: *mut [T], ix: usize) -> *mut T {
-    p.cast::<T>().add(ix)
 }
 
 enum CA<K, V, const N: usize, const M: usize> {
@@ -693,6 +701,10 @@ struct NonLeaf<K, V, const N: usize, const M: usize> {
 }
 
 impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
+    fn print_clen(&self, n: usize) {
+        println!("clen({})={:?}", n + 1, &self.clen[0..n]);
+    }
+
     fn new(child_is_leaf: bool) -> Self {
         Self {
             leaf: Leaf::new(),
@@ -732,7 +744,7 @@ impl<K, V, const N: usize, const M: usize> NonLeaf<K, V, N, M> {
         Q: Ord + ?Sized,
     {
         match self.leaf.search(len, |x| x.borrow().cmp(key)) {
-            Ok(i) => Some(self.leaf.ix(i)),
+            Ok(i) => Some(self.leaf.kv(i)),
             Err(i) => self.child_get_key_value(i, key),
         }
     }
@@ -1055,7 +1067,6 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
             // Converting map to raw pointer here is necessary to keep Miri happy
             // although not when using MIRIFLAGS=-Zmiri-tree-borrows.
             let clen = map.clen as usize;
-            println!("map.clen={}", clen);
             let map: *mut BTreeMap<K, V, N, M> = map;
             let mut s = CursorMutKey::make(map);
             s.push_lower(clen, &mut (*map).tree, bound);
@@ -1072,7 +1083,6 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
             // Converting map to raw pointer here is necessary to keep Miri happy
             // although not when using MIRIFLAGS=-Zmiri-tree-borrows.
             let clen = map.clen as usize;
-            println!("map.clen={}", clen);
             let map: *mut BTreeMap<K, V, N, M> = map;
             let mut s = CursorMutKey::make(map);
             s.push_upper(clen, &mut (*map).tree, bound);
@@ -1324,7 +1334,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index < self.len {
                 self.index += 1;
-                Some((*leaf).ixm(self.index - 1))
+                Some((*leaf).kvm(self.index - 1))
             } else {
                 let mut tsp = self.stack.len();
                 while tsp > 0 {
@@ -1332,7 +1342,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
                     let (nl, ix, len) = self.stack[tsp];
                     if ix < len {
                         self.push_child(tsp, nl, ix + 1, len);
-                        return Some((*nl).leaf.ixm(ix));
+                        return Some((*nl).leaf.kvm(ix));
                     }
                 }
                 None
@@ -1346,7 +1356,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index > 0 {
                 self.index -= 1;
-                Some((*leaf).ixm(self.index))
+                Some((*leaf).kvm(self.index))
             } else {
                 let mut tsp = self.stack.len();
                 while tsp > 0 {
@@ -1354,7 +1364,7 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
                     let (nl, ix, len) = self.stack[tsp];
                     if ix > 0 {
                         self.push_child_back(tsp, nl, ix - 1, len);
-                        return Some((*nl).leaf.ixm(ix - 1));
+                        return Some((*nl).leaf.kvm(ix - 1));
                     }
                 }
                 None
@@ -1367,14 +1377,14 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index < self.len {
-                Some((*leaf).ixm(self.index))
+                Some((*leaf).kvm(self.index))
             } else {
                 let mut tsp = self.stack.len();
                 while tsp > 0 {
                     tsp -= 1;
                     let (nl, ix, len) = self.stack[tsp];
                     if ix < len {
-                        return Some((*nl).leaf.ixm(ix));
+                        return Some((*nl).leaf.kvm(ix));
                     }
                 }
                 None
@@ -1387,14 +1397,14 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index > 0 {
-                Some((*leaf).ixm(self.index - 1))
+                Some((*leaf).kvm(self.index - 1))
             } else {
                 let mut tsp = self.stack.len();
                 while tsp > 0 {
                     tsp -= 1;
                     let (nl, ix, _len) = self.stack[tsp];
                     if ix > 0 {
-                        return Some((*nl).leaf.ixm(ix - 1));
+                        return Some((*nl).leaf.kvm(ix - 1));
                     }
                 }
                 None
@@ -1568,33 +1578,36 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMutKey<'a, K, V, N, M> {
 pub struct UnorderedKeyError {}
 
 #[test]
-fn exp_mem_test()
-{
-    const N: usize = 51;
+fn exp_mem_test() {
+    const N: usize = 55;
     const M: usize = N + 1;
     let n = 1000;
     let mut map = BTreeMap::<u64, u64, N, M>::new();
     for i in 0..n {
-       map.insert(i*2, i*2);
+        map.insert(i * 2, i * 2);
     }
     for i in 0..n {
-       map.insert(i*2+1, i*2+1);
+        map.insert(i * 2 + 1, i * 2 + 1);
     }
     crate::print_memory();
-    println!("Required memory: {} bytes", n * 32 );
-    println!("size of Leaf={}", std::mem::size_of::<Leaf<u64,u64,N>>() );
+    println!("Required memory: {} bytes", n * 32);
+    println!("size of Leaf={}", std::mem::size_of::<Leaf<u64, u64, N>>());
+    println!(
+        "size of NonLeaf={}",
+        std::mem::size_of::<NonLeaf<u64, u64, N, M>>()
+    );
+    map.print_clen();
 }
 
 #[test]
-fn std_mem_test()
-{
+fn std_mem_test() {
     let n = 1000;
     let mut map = std::collections::BTreeMap::<u64, u64>::new();
     for i in 0..n {
-       map.insert(i*2, i*2);
+        map.insert(i * 2, i * 2);
     }
     for i in 0..n {
-       map.insert(i*2+1, i*2+1);
+        map.insert(i * 2 + 1, i * 2 + 1);
     }
     crate::print_memory();
 }
