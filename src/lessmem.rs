@@ -681,8 +681,7 @@ impl<K, V, const N: usize> Leaf<K, V, N> {
     }
 } // end impl Leaf
 
-/// ...
-pub struct LeafIter<'a, K, V, const N: usize> {
+struct LeafIter<'a, K, V, const N: usize> {
     leaf: &'a Leaf<K, V, N>,
     fwd: usize,
     bck: usize,
