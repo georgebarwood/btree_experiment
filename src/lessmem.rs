@@ -1150,6 +1150,16 @@ impl<'a, K, V, const N: usize, const M: usize> CursorMut<'a, K, V, N, M> {
         self.0.insert_after_unchecked(key, value);
     }
 
+    /// Remove previous element.
+    pub fn remove_prev(&mut self) -> Option<(K, V)> {
+        self.0.remove_prev()
+    }
+
+    /// Remove next element.
+    pub fn remove_next(&mut self) -> Option<(K, V)> {
+        self.0.remove_next()
+    }
+
     /// Converts the cursor into a `CursorMutKey`, which allows mutating the key of elements in the tree.
     /// # Safety
     ///
@@ -1686,8 +1696,12 @@ fn general_test() {
         let (k, v) = c.prev().unwrap();
         assert_eq!((*k, *v), (i, i));
     }
+    for i in 1..(n - 1) {
+        let v = map.remove(&i).unwrap();
+        assert_eq!(v, i);
+    }
+    assert_eq!(map.len(), 0);
 
-    map.clear();
     let mut c = map.lower_bound_mut(Bound::Unbounded);
 
     for i in 0..50 {
@@ -1702,10 +1716,10 @@ fn general_test() {
         assert_eq!(map.get(&i).unwrap(), &i);
     }
 
-    println!("testing remove");
+    let mut c = map.lower_bound_mut(Bound::Unbounded);
     for i in 0..50 {
-        let v = map.remove(&i).unwrap();
-        assert_eq!(v, i);
+        let (k, v) = c.remove_next().unwrap();
+        assert_eq!((k, v), (i, i));
     }
 
     assert_eq!(map.len(), 0);
