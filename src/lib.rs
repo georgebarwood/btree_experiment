@@ -10,7 +10,7 @@
 //! One difference is the walk and `walk_mut` methods, which can be slightly more efficient than using range and `range_mut`.
 //!
 //! # ToDo
-//! 
+//!
 //! Implement get_xy properly.
 //!
 //! # Example

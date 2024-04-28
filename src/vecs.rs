@@ -270,10 +270,10 @@ impl<T> ShortVec<T> {
         }
     }
 
-    pub fn split_off(&mut self, at: usize, cap: usize) -> Self {
+    pub fn split_off(&mut self, at: usize) -> Self {
         safe_assert!(at < self.len());
         let len = self.len() - at;
-        let mut result = Self::new(cap);
+        let mut result = Self::new(self.cap as usize);
         result.allocate(len);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);

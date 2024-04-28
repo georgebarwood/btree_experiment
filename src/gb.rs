@@ -222,7 +222,8 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        self.tree.get_key_value(key)
+        let kv = self.tree.get_key_value(key)?;
+        Some((&kv.0, &kv.1))
     }
 
     /// Get references to first key and value.
@@ -739,7 +740,7 @@ impl<K, V, const B: usize> Tree<K, V, B> {
         }
     }
 
-    fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    fn get_key_value<Q>(&self, key: &Q) -> Option<&(K, V)>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -943,7 +944,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     }
 
     fn split(&mut self) -> ((K, V), PairVec<K, V>) {
-        let right = self.0.split_off(B + 1, B * 2 - 1);
+        let right = self.0.split_off(B + 1);
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -994,13 +995,12 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         Some(self.0.remove(self.look(key).ok()?))
     }
 
-    fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    fn get_key_value<Q>(&self, key: &Q) -> Option<&(K, V)>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let x = self.0.ix(self.look(key).ok()?);
-        Some((&x.0, &x.1))
+        Some(self.0.ix(self.look(key).ok()?))
     }
 
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
@@ -1082,8 +1082,8 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
 
     fn split(&mut self) -> Split<K, V, B> {
         let right = Box::new(Self {
-            v: self.v.split_off(B + 1, B * 2 - 1),
-            c: self.c.split_off(B + 1, B * 2),
+            v: self.v.split_off(B + 1),
+            c: self.c.split_off(B + 1),
         });
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
@@ -1216,16 +1216,13 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
         removed
     }
 
-    fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    fn get_key_value<Q>(&self, key: &Q) -> Option<&(K, V)>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         match self.look(key) {
-            Ok(i) => {
-                let kv = self.v.ix(i);
-                Some((&kv.0, &kv.1))
-            }
+            Ok(i) => Some(self.v.ix(i)),
             Err(i) => self.c.ix(i).get_key_value(key),
         }
     }
@@ -1679,12 +1676,8 @@ impl<'a, K, V, const B: usize> Iterator for RangeMut<'a, K, V, B> {
                 self.fwd_stk.pop();
             } else {
                 match self.steal_bck() {
-                    StealResultMut::KV(kv) => {
-                        return Some(kv);
-                    }
-                    StealResultMut::CT(ct) => {
-                        self.push_tree(ct, false);
-                    }
+                    StealResultMut::KV(kv) => return Some(kv),
+                    StealResultMut::CT(ct) => self.push_tree(ct, false),
                     StealResultMut::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
                             if let Some(x) = f.next() {
@@ -1717,12 +1710,8 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for RangeMut<'a, K, V, B> {
                 self.bck_stk.pop();
             } else {
                 match self.steal_fwd() {
-                    StealResultMut::KV(kv) => {
-                        return Some(kv);
-                    }
-                    StealResultMut::CT(ct) => {
-                        self.push_tree_back(ct);
-                    }
+                    StealResultMut::KV(kv) => return Some(kv),
+                    StealResultMut::CT(ct) => self.push_tree_back(ct),
                     StealResultMut::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
                             if let Some(x) = f.next_back() {
@@ -1888,12 +1877,8 @@ impl<K, V, const B: usize> Iterator for IntoIterInner<K, V, B> {
                 self.fwd_stk.pop();
             } else {
                 match self.steal_bck() {
-                    StealResultCon::KV(kv) => {
-                        return Some(kv);
-                    }
-                    StealResultCon::CT(ct) => {
-                        self.push_tree(ct, false);
-                    }
+                    StealResultCon::KV(kv) => return Some(kv),
+                    StealResultCon::CT(ct) => self.push_tree(ct, false),
                     StealResultCon::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
                             if let Some(x) = f.next() {
@@ -1926,12 +1911,9 @@ impl<K, V, const B: usize> DoubleEndedIterator for IntoIterInner<K, V, B> {
                 self.bck_stk.pop();
             } else {
                 match self.steal_fwd() {
-                    StealResultCon::KV(kv) => {
-                        return Some(kv);
-                    }
-                    StealResultCon::CT(ct) => {
-                        self.push_tree_back(ct);
-                    }
+                    StealResultCon::KV(kv) => return Some(kv),
+
+                    StealResultCon::CT(ct) => self.push_tree_back(ct),
                     StealResultCon::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
                             if let Some(x) = f.next_back() {
@@ -2143,12 +2125,8 @@ impl<'a, K, V, const B: usize> Iterator for Range<'a, K, V, B> {
                 self.fwd_stk.pop();
             } else {
                 match self.steal_bck() {
-                    StealResult::KV(kv) => {
-                        return Some(kv);
-                    }
-                    StealResult::CT(ct) => {
-                        self.push_tree(ct, false);
-                    }
+                    StealResult::KV(kv) => return Some(kv),
+                    StealResult::CT(ct) => self.push_tree(ct, false),
                     StealResult::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
                             if let Some(x) = f.next() {
@@ -2181,12 +2159,8 @@ impl<'a, K, V, const B: usize> DoubleEndedIterator for Range<'a, K, V, B> {
                 self.bck_stk.pop();
             } else {
                 match self.steal_fwd() {
-                    StealResult::KV(kv) => {
-                        return Some(kv);
-                    }
-                    StealResult::CT(ct) => {
-                        self.push_tree_back(ct);
-                    }
+                    StealResult::KV(kv) => return Some(kv),
+                    StealResult::CT(ct) => self.push_tree_back(ct),
                     StealResult::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
                             if let Some(x) = f.next_back() {
