@@ -27,7 +27,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
 
     /// This should produce a compile-time error if B is too small.
     const CHECK_B: usize = {
-        assert!(B >= 6 && 2*B < u16::MAX as usize);
+        assert!(B >= 6 && 2 * B < u16::MAX as usize);
         0
     };
 
@@ -991,7 +991,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        Some(self.0.remove( self.look(key).ok()? ))
+        Some(self.0.remove(self.look(key).ok()?))
     }
 
     fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
@@ -999,13 +999,8 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
-            Ok(i) => {
-                let x = self.0.ix(i);
-                Some((&x.0, &x.1))
-            }
-            Err(_i) => None,
-        }
+        let x = self.0.ix(self.look(key).ok()?);
+        Some((&x.0, &x.1))
     }
 
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
@@ -1013,10 +1008,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
-            Ok(i) => Some(self.0.ixm(i)),
-            Err(_) => None,
-        }
+        Some(self.0.ixm(self.look(key).ok()?))
     }
 
     fn pop_first(&mut self) -> Option<(K, V)> {
@@ -3076,4 +3068,3 @@ fn sizes() {
         std::mem::size_of::<BTreeMap<K, V, B>>()
     );
 }
-

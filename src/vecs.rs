@@ -366,12 +366,10 @@ where
     }
 }
 
-impl<T> IntoIterator for ShortVec<T>
-{
+impl<T> IntoIterator for ShortVec<T> {
     type Item = T;
     type IntoIter = ShortVecIter<T>;
-    fn into_iter(self) -> Self::IntoIter
-    {
+    fn into_iter(self) -> Self::IntoIter {
         ShortVecIter { start: 0, v: self }
     }
 }
