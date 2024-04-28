@@ -58,8 +58,8 @@
        * a raw pointer to the length byte in the parent node
 */
 
-///  Not yet live... experiment storing vec lengths in parent.
-pub mod lessmem;
+// Not yet live... experiment storing vec lengths in parent.
+// pub mod lessmem;
 
 /// Module with version of `BTreeMap` that allows B to be specified as generic constant.
 pub mod gb;

@@ -1,3 +1,12 @@
+#[test]
+fn sizes()
+{
+    println!("size of Tree={}", std::mem::size_of::<Tree<u64, u64, 10>>());
+    println!("size of Leaf={}", std::mem::size_of::<Leaf<u64, u64, 10>>());
+    println!("size of NonLeaf={}", std::mem::size_of::<NonLeaf<u64, u64, 10>>());
+    println!("size of NonLeafInner={}", std::mem::size_of::<NonLeafInner<u64, u64, 10>>());
+}
+
 /// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (B) can be specified.
 /// B should be an odd number, at least 11, a good value may be 39.
 ///
@@ -654,9 +663,9 @@ use std::{
 // Vector types.
 type StkVec<T> = arrayvec::ArrayVec<T, 15>;
 
-use crate::vecs::{FixedCapIter, FixedCapVec};
-type PairVec<K, V, const B: usize> = FixedCapVec<(K, V)>;
-type TreeVec<K, V, const B: usize> = FixedCapVec<Tree<K, V, B>>;
+use crate::vecs::{ShortVecIter, ShortVec};
+type PairVec<K, V, const B: usize> = ShortVec<(K, V)>;
+type TreeVec<K, V, const B: usize> = ShortVec<Tree<K, V, B>>;
 
 type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
 
@@ -904,9 +913,9 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         self.0.len() == B
     }
 
-    fn fc_iter(mut self) -> FixedCapIter<(K, V)> {
+    fn sv_iter(mut self) -> ShortVecIter<(K, V)> {
         let v = std::mem::take(&mut self.0);
-        v.fc_iter(B)
+        v.sv_iter(B)
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -1114,10 +1123,10 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn fc_iter(mut self) -> (FixedCapIter<(K, V)>, FixedCapIter<Tree<K, V, B>>) {
+    fn sv_iter(mut self) -> (ShortVecIter<(K, V)>, ShortVecIter<Tree<K, V, B>>) {
         let v = std::mem::take(&mut self.v);
         let c = std::mem::take(&mut self.c);
-        (v.fc_iter(B), c.fc_iter(B + 1))
+        (v.sv_iter(B), c.sv_iter(B + 1))
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -1832,13 +1841,13 @@ impl<K, V, const B: usize> ExactSizeIterator for IntoIter<K, V, B> {
 impl<K, V, const B: usize> FusedIterator for IntoIter<K, V, B> {}
 
 struct StkCon<K, V, const B: usize> {
-    v: FixedCapIter<(K, V)>,
-    c: FixedCapIter<Tree<K, V, B>>,
+    v: ShortVecIter<(K, V)>,
+    c: ShortVecIter<Tree<K, V, B>>,
 }
 
 struct IntoIterInner<K, V, const B: usize> {
-    fwd_leaf: Option<FixedCapIter<(K, V)>>,
-    bck_leaf: Option<FixedCapIter<(K, V)>>,
+    fwd_leaf: Option<ShortVecIter<(K, V)>>,
+    bck_leaf: Option<ShortVecIter<(K, V)>>,
     fwd_stk: StkVec<StkCon<K, V, B>>,
     bck_stk: StkVec<StkCon<K, V, B>>,
 }
@@ -1854,10 +1863,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree(&mut self, tree: Tree<K, V, B>, both: bool) {
         match tree {
             Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.fc_iter());
+                self.fwd_leaf = Some(leaf.sv_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = nl.fc_iter();
+                let (v, mut c) = nl.sv_iter();
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -1874,10 +1883,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree_back(&mut self, tree: Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.fc_iter());
+                self.bck_leaf = Some(leaf.sv_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = nl.fc_iter();
+                let (v, mut c) = nl.sv_iter();
                 let ct_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
                 if let Some(ct_back) = ct_back {

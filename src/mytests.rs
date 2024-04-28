@@ -5,6 +5,34 @@ const REP: usize = if cfg!(miri) { 10 } else { 1000 };
 const N: usize = if cfg!(miri) { 1000 } else { 10000 };
 
 #[test]
+fn exp_mem_test() {
+    let n = N;
+    let mut map = BTreeMap::new();
+    for i in 0..n {
+        map.insert(i * 2, i * 2);
+    }
+    for i in 0..n {
+        map.insert(i * 2 + 1, i * 2 + 1);
+    }
+    crate::print_memory();
+    println!("Required memory: {} bytes", n * 32);
+}
+
+#[test]
+fn std_mem_test() {
+    let n = N;
+    let mut map = std::collections::BTreeMap::new();
+    for i in 0..n {
+        map.insert(i * 2, i * 2);
+    }
+    for i in 0..n {
+        map.insert(i * 2 + 1, i * 2 + 1);
+    }
+    crate::print_memory();
+}
+
+
+#[test]
 fn exp_clone_test() {
     let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
     let mut c = m.lower_bound_mut(Bound::Unbounded);
