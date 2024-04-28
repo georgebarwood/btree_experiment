@@ -42,12 +42,16 @@ impl<T> BasicVec<T> {
     /// Set capacity ( allocate or reallocate memory ).
     /// # Safety
     ///
-    /// `old` must be the previous alloc set, or 0 if no allloc has yet been set.
+    /// `oa` must be the previous alloc set (0 if no alloc has yet been set).
     pub unsafe fn set_alloc(&mut self, oa: usize, na: usize) {
         if mem::size_of::<T>() == 0 {
             return;
         }
-
+        if na == 0
+        {
+            self.free(oa);
+            return;
+        }
         let new_layout = Layout::array::<T>(na).unwrap();
 
         let new_ptr = if oa == 0 {
@@ -71,7 +75,7 @@ impl<T> BasicVec<T> {
     /// The capacity must be the last capacity set.
     pub unsafe fn free(&mut self, oa: usize) {
         let elem_size = mem::size_of::<T>();
-        if oa != 0 && elem_size != 0 && self.p != NonNull::dangling() {
+        if oa != 0 && elem_size != 0 {
             alloc::dealloc(
                 self.p.as_ptr().cast::<u8>(),
                 Layout::array::<T>(oa).unwrap(),
@@ -268,6 +272,7 @@ impl<T> ShortVec<T> {
             let result = self.v.get(at);
             self.v.move_self(at + 1, at, self.len() - at - 1);
             self.len -= 1;
+            self.trim();
             result
         }
     }
@@ -306,6 +311,7 @@ impl<T> ShortVec<T> {
                 i += 1;
             }
             self.len -= (i - r) as u16;
+            self.trim();
         }
     }
 
