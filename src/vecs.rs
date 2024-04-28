@@ -80,6 +80,7 @@ impl<T> BasicVec<T> {
                 Layout::array::<T>(oa).unwrap(),
             );
         }
+        self.p = NonNull::dangling();
     }
 
     /// Set value.

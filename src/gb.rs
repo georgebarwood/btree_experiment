@@ -991,10 +991,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
-            Ok(i) => Some(self.0.remove(i)),
-            Err(_i) => None,
-        }
+        Some(self.0.remove( self.look(key).ok()? ))
     }
 
     fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
@@ -2483,14 +2480,14 @@ impl<'a, K, V, const B: usize> CursorMut<'a, K, V, B> {
         Some((&*k, v))
     }
 
-    /// Returns references to the previous key/value pair.
+    /// Get references to the next key/value pair.
     #[must_use]
     pub fn peek_next(&self) -> Option<(&K, &mut V)> {
         let (k, v) = self.0.peek_next()?;
         Some((&*k, v))
     }
 
-    /// Returns references to the previous key/value pair.
+    /// Get references to the previous key/value pair.
     #[must_use]
     pub fn peek_prev(&self) -> Option<(&K, &mut V)> {
         let (k, v) = self.0.peek_prev()?;
