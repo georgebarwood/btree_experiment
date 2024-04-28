@@ -330,9 +330,7 @@ impl<T> ShortVec<T> {
         while i < j {
             let m = (i + j) / 2;
             match f(self.ix(m)) {
-                Ordering::Equal => {
-                    return Ok(m);
-                }
+                Ordering::Equal => return Ok(m),
                 Ordering::Less => i = m + 1,
                 Ordering::Greater => j = m,
             }
