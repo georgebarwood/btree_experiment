@@ -2606,20 +2606,20 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
         }
     }
 
-    fn push(&mut self, tree: &mut Tree<K, V, B>) {
+    fn push(&mut self, tsp: usize, tree: &mut Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
                 self.index = 0;
                 self.leaf = Some(leaf);
             }
             Tree::NL(nl) => {
-                self.stack.push((nl, 0));
-                self.push(nl.c.ixm(0));
+                self.stack[tsp] = (nl, 0);
+                self.push(tsp+1, nl.c.ixm(0));
             }
         }
     }
 
-    fn push_back(&mut self, tree: &mut Tree<K, V, B>) {
+    fn push_back(&mut self, tsp: usize, tree: &mut Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
                 self.index = leaf.0.len();
@@ -2627,8 +2627,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             }
             Tree::NL(nl) => {
                 let ix = nl.v.len();
-                self.stack.push((nl, ix));
-                self.push_back(nl.c.ixm(ix));
+                self.stack[tsp] = (nl, ix);
+                self.push_back(tsp+1, nl.c.ixm(ix));
             }
         }
     }
@@ -2740,7 +2740,10 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == (*leaf).0.len() {
-                while let Some((nl, mut ix)) = self.stack.pop() {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, mut ix) = self.stack[tsp];
                     if ix < (*nl).v.len() {
                         let kv;
                         if let Some(rep) = (*nl).c.ixm(ix).pop_last() {
@@ -2750,8 +2753,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                             kv = (*nl).v.remove(ix);
                             (*nl).c.remove(ix);
                         }
-                        self.stack.push((nl, ix));
-                        self.push((*nl).c.ixm(ix));
+                        self.stack[tsp] = (nl, ix);
+                        self.push(tsp+1, (*nl).c.ixm(ix));
                         (*self.map).len -= 1;
                         return Some(kv);
                     }
@@ -2770,12 +2773,15 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == (*leaf).0.len() {
-                while let Some((nl, mut ix)) = self.stack.pop() {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, mut ix) = self.stack[tsp];
                     if ix < (*nl).v.len() {
                         let kv = (*nl).v.ixm(ix);
                         ix += 1;
-                        self.stack.push((nl, ix));
-                        self.push((*nl).c.ixm(ix));
+                        self.stack[tsp] = (nl, ix);
+                        self.push(tsp+1, (*nl).c.ixm(ix));
                         return Some((&mut kv.0, &mut kv.1));
                     }
                 }
@@ -2792,12 +2798,15 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
     pub fn prev(&mut self) -> Option<(&mut K, &mut V)> {
         unsafe {
             if self.index == 0 {
-                while let Some((nl, mut ix)) = self.stack.pop() {
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, mut ix) = self.stack[tsp];
                     if ix > 0 {
                         ix -= 1;
                         let kv = (*nl).v.ixm(ix);
-                        self.stack.push((nl, ix));
-                        self.push_back((*nl).c.ixm(ix));
+                        self.stack[tsp] = (nl,ix);
+                        self.push_back(tsp+1, (*nl).c.ixm(ix));
                         return Some((&mut kv.0, &mut kv.1));
                     }
                 }
@@ -2954,21 +2963,21 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         }
     }
 
-    fn push(&mut self, tree: &Tree<K, V, B>) {
+    fn push(&mut self, tsp: usize, tree: &Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
                 self.leaf = Some(leaf);
                 self.index = 0;
             }
             Tree::NL(nl) => {
-                self.stack.push((nl, 0));
+                self.stack[tsp] = (nl, 0);
                 let c = &nl.c[0];
-                self.push(c);
+                self.push(tsp+1, c);
             }
         }
     }
 
-    fn push_back(&mut self, tree: &Tree<K, V, B>) {
+    fn push_back(&mut self, tsp: usize, tree: &Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
                 self.leaf = Some(leaf);
@@ -2976,9 +2985,9 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
             }
             Tree::NL(nl) => {
                 let ix = nl.v.len();
-                self.stack.push((nl, ix));
+                self.stack[tsp] = (nl, ix);
                 let c = &nl.c[ix];
-                self.push_back(c);
+                self.push_back(tsp+1, c);
             }
         }
     }
@@ -2990,18 +2999,20 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == (*leaf).0.len() {
                 loop {
-                    if let Some((nl, mut ix)) = self.stack.pop() {
+                    let mut tsp = self.stack.len();
+                    while tsp > 0 {
+                        tsp -= 1;
+                        let (nl, mut ix) = self.stack[tsp];
                         if ix < (*nl).v.len() {
                             let kv: *const (K, V) = (*nl).v.ix(ix);
                             ix += 1;
-                            let ct = (*nl).c.ix(ix);
-                            self.stack.push((nl, ix));
-                            self.push(ct);
+                            self.stack[tsp] = (nl, ix);
+                            let ct = (*nl).c.ix(ix);                            
+                            self.push(tsp+1, ct);
                             return Some((&(*kv).0, &(*kv).1));
                         }
-                    } else {
-                        return None;
                     }
+                    return None;
                 }
             } else {
                 let kv: *const (K, V) = (*leaf).0.ix(self.index);
@@ -3017,18 +3028,20 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == 0 {
                 loop {
-                    if let Some((nl, mut ix)) = self.stack.pop() {
+                    let mut tsp = self.stack.len();
+                    while tsp > 0 {
+                        tsp -= 1;
+                        let (nl, mut ix) = self.stack[tsp];
                         if ix > 0 {
                             ix -= 1;
-                            let kv: *const (K, V) = (*nl).v.ix(ix);
+                            let kv: *const (K, V) = (*nl).v.ix(ix);                            
+                            self.stack[tsp] = (nl, ix);
                             let ct = (*nl).c.ix(ix);
-                            self.stack.push((nl, ix));
-                            self.push_back(ct);
+                            self.push_back(tsp+1, ct);
                             return Some((&(*kv).0, &(*kv).1));
                         }
-                    } else {
-                        return None;
                     }
+                    return None;
                 }
             } else {
                 self.index -= 1;
