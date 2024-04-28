@@ -3,21 +3,11 @@
 
 //! This crate implements a [`BTreeMap`] similar to [`std::collections::BTreeMap`].
 //!
+//! In many common cases it should use about half as much memory.
+//!
 //! Most of the implementation is in the [gb] module, see [`gb::BTreeMap`].
 //!
 //! One difference is the walk and `walk_mut` methods, which can be slightly more efficient than using range and `range_mut`.
-//!
-//! # ToDo
-//!
-//! More efficient implementation of append?
-//!
-//! Check memory used (std versus exp) ( Done: feature cap )
-//!
-//! Investigate why exp is using slightly more memory than std... with larger DB, exp wins.
-//!
-//! Maybe it is size of NonLeaf / Tree enum ( which could be reduced ).
-//!
-//! Either use Box ( which works to some extent ), or have new "NonLeafVec" type which stores only one length.
 //!
 //! # Example
 //!
@@ -35,30 +25,7 @@
 //! - `serde` : enables serialisation of [`BTreeMap`] via serde crate.
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
-/* Design of Leaf and NonLeaf storage...
-
-   For a Leaf, the length could be stored in the parent...
-   The capacity is determined from B.
-   The storage is (aligned) array of keys + (aligned) array of values.
-
-   For a NonLeaf, again the length can be stored in the parent...
-   The storage is
-       (aligned) array of keys
-     + (aligned) array of values +
-     + array of child pointers
-     + array of child lengths (bytes).
-   The key and value arrays are capacity B.
-   The child length and child pointer arrays are capacity B + 1.
-   B should be a number of form n*8 - 1, like 31 so B + 1 = 32, 32 bytes = 4 words.
-
-   Node type can be determined by depth in the tree, the root BTreeMap can stored the overall tree depth.
-
-   A "node reference" (not stored permanently) will consist of
-       * a raw pointer to the node data
-       * a raw pointer to the length byte in the parent node
-*/
-
-// Not yet live... experiment storing vec lengths in parent.
+// Incomplete attempt at storing lengths in parent to save space, turned out rather messey, abandoned for now.
 // pub mod lessmem;
 
 /// Module with version of `BTreeMap` that allows B to be specified as generic constant.
@@ -70,8 +37,8 @@ mod vecs;
 
 pub use gb::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 
-/// Default B value ( this is capacity, usually B is defined as B/2 + 1 ).
-pub const DB: usize = 51;
+/// Default B value.
+pub const DB: usize = 25;
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`] with default node capacity [DB].
 pub type BTreeMap<K, V> = gb::BTreeMap<K, V, DB>;
@@ -153,4 +120,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-//#[cfg(test)] mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!

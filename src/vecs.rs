@@ -337,10 +337,6 @@ impl<T> ShortVec<T> {
         }
         Err(i)
     }
-
-    pub fn sv_iter(self) -> ShortVecIter<T> {
-        ShortVecIter { start: 0, v: self }
-    }
 }
 
 impl<T> Deref for ShortVec<T> {
@@ -366,6 +362,16 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<T> IntoIterator for ShortVec<T>
+{
+    type Item = T;
+    type IntoIter = ShortVecIter<T>;
+    fn into_iter(self) -> Self::IntoIter
+    {
+        ShortVecIter { start: 0, v: self }
     }
 }
 

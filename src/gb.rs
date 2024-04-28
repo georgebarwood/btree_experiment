@@ -1,26 +1,5 @@
-#[test]
-fn sizes() {
-    const N: usize = 55;
-    type K = u64;
-    type V = u64;
-    println!("size of Leaf={}", std::mem::size_of::<Leaf<K, V, N>>());
-    println!(
-        "size of NonLeaf={}",
-        std::mem::size_of::<NonLeaf<K, V, N>>()
-    );
-    println!(
-        "size of NonLeafInner={}",
-        std::mem::size_of::<NonLeafInner<K, V, N>>()
-    );
-    println!("size of Tree={}", std::mem::size_of::<Tree<K, V, N>>());
-    println!(
-        "size of BTreeMap={}",
-        std::mem::size_of::<BTreeMap<K, V, N>>()
-    );
-}
-
-/// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (B) can be specified.
-/// B should be an odd number, at least 11, a good value may be 39.
+/// `BTreeMap` similar to [`std::collections::BTreeMap`] where B can be specified.
+/// B should be at least 6, a good value may be 20.
 ///
 /// General guide to implementation:
 ///
@@ -48,7 +27,7 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
 
     /// This should produce a compile-time error if B is too small.
     const CHECK_B: usize = {
-        assert!(B >= 11);
+        assert!(B >= 6 && 2*B < u16::MAX as usize);
         0
     };
 
@@ -269,7 +248,6 @@ impl<K, V, const B: usize> BTreeMap<K, V, B> {
         let (tree, len) = (std::mem::take(&mut other.tree), other.len);
         other.len = 0;
         let temp = BTreeMap { len, tree };
-        // Could use Cursor to do this more efficiently.
         for (k, v) in temp {
             self.insert(k, v);
         }
@@ -714,7 +692,7 @@ enum Tree<K, V, const B: usize> {
 }
 impl<K, V, const B: usize> Default for Tree<K, V, B> {
     fn default() -> Self {
-        Tree::L(Leaf(PairVec::new(B)))
+        Tree::L(Leaf(PairVec::new(B * 2 - 1)))
     }
 }
 impl<K, V, const B: usize> Tree<K, V, B> {
@@ -914,12 +892,12 @@ impl<K, V, const B: usize> Tree<K, V, B> {
 struct Leaf<K, V, const B: usize>(PairVec<K, V>);
 impl<K, V, const B: usize> Leaf<K, V, B> {
     fn full(&self) -> bool {
-        self.0.len() == B
+        self.0.len() == B * 2 - 1
     }
 
-    fn sv_iter(mut self) -> ShortVecIter<(K, V)> {
+    fn into_iter(mut self) -> ShortVecIter<(K, V)> {
         let v = std::mem::take(&mut self.0);
-        v.sv_iter()
+        v.into_iter()
     }
 
     fn look<Q>(&self, key: &Q) -> Result<usize, usize>
@@ -965,7 +943,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     }
 
     fn split(&mut self) -> ((K, V), PairVec<K, V>) {
-        let right = self.0.split_off(B / 2 + 1, B);
+        let right = self.0.split_off(B + 1, B * 2 - 1);
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -985,8 +963,8 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         let value = x.value.take().unwrap();
         if self.full() {
             let (med, mut right) = self.split();
-            if i > B / 2 {
-                i -= B / 2 + 1;
+            if i > B {
+                i -= B + 1;
                 right.insert(i, (key, value));
             } else {
                 self.0.insert(i, (key, value));
@@ -1103,30 +1081,30 @@ struct NonLeafInner<K, V, const B: usize> {
 }
 impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     fn full(&self) -> bool {
-        self.v.len() == B
+        self.v.len() == B * 2 - 1
     }
 
     fn new() -> Box<Self> {
         Box::new(Self {
-            v: PairVec::new(B),
-            c: TreeVec::new(B + 1),
+            v: PairVec::new(B * 2 - 1),
+            c: TreeVec::new(B * 2),
         })
     }
 
     fn split(&mut self) -> Split<K, V, B> {
         let right = Box::new(Self {
-            v: self.v.split_off(B / 2 + 1, B),
-            c: self.c.split_off(B / 2 + 1, B + 1),
+            v: self.v.split_off(B + 1, B * 2 - 1),
+            c: self.c.split_off(B + 1, B * 2),
         });
         let med = self.v.pop().unwrap();
         (med, Tree::NL(right))
     }
 
     #[allow(clippy::type_complexity)]
-    fn sv_iter(mut self) -> (ShortVecIter<(K, V)>, ShortVecIter<Tree<K, V, B>>) {
+    fn into_iter(mut self) -> (ShortVecIter<(K, V)>, ShortVecIter<Tree<K, V, B>>) {
         let v = std::mem::take(&mut self.v);
         let c = std::mem::take(&mut self.c);
-        (v.sv_iter(), c.sv_iter())
+        (v.into_iter(), c.into_iter())
     }
 
     fn look<Q>(&self, key: &Q) -> Result<usize, usize>
@@ -1780,7 +1758,7 @@ enum StealResultCon<K, V, const B: usize> {
     Nothing,
 }
 
-/// Consuming iterator returned by [`BTreeMap::into_iter`].
+/// Consuming iterator for [`BTreeMap`].
 pub struct IntoIter<K, V, const B: usize> {
     len: usize,
     inner: IntoIterInner<K, V, B>,
@@ -1847,10 +1825,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree(&mut self, tree: Tree<K, V, B>, both: bool) {
         match tree {
             Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.sv_iter());
+                self.fwd_leaf = Some(leaf.into_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = nl.sv_iter();
+                let (v, mut c) = nl.into_iter();
                 let ct = c.next();
                 let ct_back = if both { c.next_back() } else { None };
                 let both = both && ct_back.is_none();
@@ -1867,10 +1845,10 @@ impl<K, V, const B: usize> IntoIterInner<K, V, B> {
     fn push_tree_back(&mut self, tree: Tree<K, V, B>) {
         match tree {
             Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.sv_iter());
+                self.bck_leaf = Some(leaf.into_iter());
             }
             Tree::NL(nl) => {
-                let (v, mut c) = nl.sv_iter();
+                let (v, mut c) = nl.into_iter();
                 let ct_back = c.next_back();
                 self.bck_stk.push(StkCon { v, c });
                 if let Some(ct_back) = ct_back {
@@ -2688,8 +2666,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             if (*leaf).full() {
                 let (med, right) = (*leaf).split();
                 let right = Tree::L(Leaf(right));
-                let r = usize::from(self.index > B / 2);
-                self.index -= r * (B / 2 + 1);
+                let r = usize::from(self.index > B);
+                self.index -= r * (B + 1);
                 let t = self.split(med, right, r);
                 leaf = (*t).leaf();
                 self.leaf = Some(leaf);
@@ -2703,8 +2681,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             if let Some((mut nl, mut ix)) = self.stack.pop() {
                 if (*nl).full() {
                     let (med, tree) = (*nl).split();
-                    let r = usize::from(ix > B / 2);
-                    ix -= r * (B / 2 + 1);
+                    let r = usize::from(ix > B);
+                    ix -= r * (B + 1);
                     let t = self.split(med, tree, r);
                     nl = (*t).nonleaf();
                 }
@@ -3079,3 +3057,26 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         }
     }
 }
+
+#[test]
+/// Not really a test, just prints the size of various types.
+fn sizes() {
+    const B: usize = 6;
+    type K = u64;
+    type V = u64;
+    println!("size of Leaf={}", std::mem::size_of::<Leaf<K, V, B>>());
+    println!(
+        "size of NonLeaf={}",
+        std::mem::size_of::<NonLeaf<K, V, B>>()
+    );
+    println!(
+        "size of NonLeafInner={}",
+        std::mem::size_of::<NonLeafInner<K, V, B>>()
+    );
+    println!("size of Tree={}", std::mem::size_of::<Tree<K, V, B>>());
+    println!(
+        "size of BTreeMap={}",
+        std::mem::size_of::<BTreeMap<K, V, B>>()
+    );
+}
+
