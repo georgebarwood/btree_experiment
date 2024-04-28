@@ -47,8 +47,7 @@ impl<T> BasicVec<T> {
         if mem::size_of::<T>() == 0 {
             return;
         }
-        if na == 0
-        {
+        if na == 0 {
             self.free(oa);
             return;
         }
@@ -202,12 +201,7 @@ impl<T> ShortVec<T> {
     }
 
     fn allocate(&mut self, amount: usize) {
-        assert!(
-            amount <= self.cap as usize,
-            "amount={} self.cap={}",
-            amount,
-            self.cap
-        );
+        assert!(amount <= self.cap as usize);
         if amount > self.alloc as usize {
             let mut na = amount + 5;
             if na > self.cap as usize {
