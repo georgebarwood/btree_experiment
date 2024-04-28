@@ -42,18 +42,18 @@ impl<T> BasicVec<T> {
     /// Set capacity ( allocate or reallocate memory ).
     /// # Safety
     ///
-    /// `old_cap` must be the previous capacity set, or 0 if no capacity has yet been set.
-    pub unsafe fn set_cap(&mut self, old_cap: usize, new_cap: usize) {
+    /// `old` must be the previous alloc set, or 0 if no allloc has yet been set.
+    pub unsafe fn set_alloc(&mut self, oa: usize, na: usize) {
         if mem::size_of::<T>() == 0 {
             return;
         }
 
-        let new_layout = Layout::array::<T>(new_cap).unwrap();
+        let new_layout = Layout::array::<T>(na).unwrap();
 
-        let new_ptr = if old_cap == 0 {
+        let new_ptr = if oa == 0 {
             alloc::alloc(new_layout)
         } else {
-            let old_layout = Layout::array::<T>(old_cap).unwrap();
+            let old_layout = Layout::array::<T>(oa).unwrap();
             let old_ptr = self.p.as_ptr().cast::<u8>();
             alloc::realloc(old_ptr, old_layout, new_layout.size())
         };
@@ -69,13 +69,12 @@ impl<T> BasicVec<T> {
     /// # Safety
     ///
     /// The capacity must be the last capacity set.
-    pub unsafe fn free(&mut self, cap: usize) {
+    pub unsafe fn free(&mut self, oa: usize) {
         let elem_size = mem::size_of::<T>();
-
-        if cap != 0 && elem_size != 0 && self.p != NonNull::dangling() {
+        if oa != 0 && elem_size != 0 && self.p != NonNull::dangling() {
             alloc::dealloc(
                 self.p.as_ptr().cast::<u8>(),
-                Layout::array::<T>(cap).unwrap(),
+                Layout::array::<T>(oa).unwrap(),
             );
         }
     }
@@ -147,29 +146,22 @@ macro_rules! safe_assert {
     ( $cond: expr ) => {};
 }
 
-/// Vec with fixed capacity.
+/// Vec with limited capacity that allocates incrementally and trims when split.
 pub(crate) struct ShortVec<T> {
-    len: u16,
+    len: u16,   // Current length.
+    alloc: u16, // Currently allocated.
+    cap: u16,   // Maximum capacity ( never allocate more than this ).
     v: BasicVec<T>,
 }
 
 impl<T> Default for ShortVec<T> {
     fn default() -> Self {
-        let v = BasicVec::new();
-        Self { len: 0, v }
+        Self::new(u16::MAX as usize)
     }
 }
 
-impl<T> ShortVec<T> {
-    pub fn new(cap: usize) -> Self {
-        let mut v = BasicVec::new();
-        unsafe {
-            v.set_cap(0, cap);
-        }
-        Self { len: 0, v }
-    }
-
-    pub fn free(&mut self, cap: usize) {
+impl<T> Drop for ShortVec<T> {
+    fn drop(&mut self) {
         let mut len = self.len as usize;
         while len > 0 {
             len -= 1;
@@ -178,7 +170,20 @@ impl<T> ShortVec<T> {
             }
         }
         unsafe {
-            self.v.free(cap);
+            self.v.free(self.alloc as usize);
+        }
+    }
+}
+
+impl<T> ShortVec<T> {
+    pub fn new(cap: usize) -> Self {
+        assert!(cap <= u16::MAX as usize);
+        let v = BasicVec::new();
+        Self {
+            len: 0,
+            alloc: 0,
+            cap: cap as u16,
+            v,
         }
     }
 
@@ -192,11 +197,41 @@ impl<T> ShortVec<T> {
         self.len == 0
     }
 
+    fn allocate(&mut self, amount: usize) {
+        assert!(
+            amount <= self.cap as usize,
+            "amount={} self.cap={}",
+            amount,
+            self.cap
+        );
+        if amount > self.alloc as usize {
+            let mut na = amount + 5;
+            if na > self.cap as usize {
+                na = self.cap as usize;
+            }
+            unsafe {
+                self.v.set_alloc(self.alloc as usize, na);
+            }
+            self.alloc = na as u16;
+        }
+    }
+
+    fn trim(&mut self) {
+        let na = self.len();
+        if self.alloc as usize > na {
+            unsafe {
+                self.v.set_alloc(self.alloc as usize, na);
+            }
+            self.alloc = na as u16;
+        }
+    }
+
     /// # Safety
     ///
     /// Capacity must be greater than len.
     #[inline]
     pub unsafe fn push(&mut self, value: T) {
+        self.allocate(self.len() + 1);
         unsafe {
             self.v.set(self.len(), value);
         }
@@ -217,6 +252,7 @@ impl<T> ShortVec<T> {
     ///
     /// Capacity must be greater than len.
     pub unsafe fn insert(&mut self, at: usize, value: T) {
+        self.allocate(self.len() + 1);
         unsafe {
             if at < self.len() {
                 self.v.move_self(at, at + 1, self.len() - at);
@@ -240,11 +276,13 @@ impl<T> ShortVec<T> {
         safe_assert!(at < self.len());
         let len = self.len() - at;
         let mut result = Self::new(cap);
+        result.allocate(len);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
         }
         result.len = len as u16;
         self.len -= len as u16;
+        self.trim();
         result
     }
 
@@ -304,12 +342,8 @@ impl<T> ShortVec<T> {
         Err(i)
     }
 
-    pub fn sv_iter(self, cap: usize) -> ShortVecIter<T> {
-        ShortVecIter {
-            start: 0,
-            v: self,
-            cap,
-        }
+    pub fn sv_iter(self) -> ShortVecIter<T> {
+        ShortVecIter { start: 0, v: self }
     }
 }
 
@@ -341,7 +375,6 @@ where
 
 pub(crate) struct ShortVecIter<T> {
     start: usize,
-    cap: usize,
     v: ShortVec<T>,
 }
 
@@ -373,7 +406,6 @@ impl<T> Drop for ShortVecIter<T> {
             self.next();
         }
         self.v.len = 0;
-        self.v.free(self.cap);
     }
 }
 impl<T> ExactSizeIterator for ShortVecIter<T> {

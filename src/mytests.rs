@@ -31,7 +31,6 @@ fn std_mem_test() {
     crate::print_memory();
 }
 
-
 #[test]
 fn exp_clone_test() {
     let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();

@@ -1,10 +1,15 @@
 #[test]
-fn sizes()
-{
+fn sizes() {
     println!("size of Tree={}", std::mem::size_of::<Tree<u64, u64, 10>>());
     println!("size of Leaf={}", std::mem::size_of::<Leaf<u64, u64, 10>>());
-    println!("size of NonLeaf={}", std::mem::size_of::<NonLeaf<u64, u64, 10>>());
-    println!("size of NonLeafInner={}", std::mem::size_of::<NonLeafInner<u64, u64, 10>>());
+    println!(
+        "size of NonLeaf={}",
+        std::mem::size_of::<NonLeaf<u64, u64, 10>>()
+    );
+    println!(
+        "size of NonLeafInner={}",
+        std::mem::size_of::<NonLeafInner<u64, u64, 10>>()
+    );
 }
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`] where the node capacity (B) can be specified.
@@ -663,8 +668,8 @@ use std::{
 // Vector types.
 type StkVec<T> = arrayvec::ArrayVec<T, 15>;
 
-use crate::vecs::{ShortVecIter, ShortVec};
-type PairVec<K, V, const B: usize> = ShortVec<(K, V)>;
+use crate::vecs::{ShortVec, ShortVecIter};
+type PairVec<K, V> = ShortVec<(K, V)>;
 type TreeVec<K, V, const B: usize> = ShortVec<Tree<K, V, B>>;
 
 type Split<K, V, const B: usize> = ((K, V), Tree<K, V, B>);
@@ -902,12 +907,7 @@ impl<K, V, const B: usize> Tree<K, V, B> {
 } // End impl Tree
 
 #[derive(Debug)]
-struct Leaf<K, V, const B: usize>(PairVec<K, V, B>);
-impl<K, V, const B: usize> Drop for Leaf<K, V, B> {
-    fn drop(&mut self) {
-        self.0.free(B);
-    }
-}
+struct Leaf<K, V, const B: usize>(PairVec<K, V>);
 impl<K, V, const B: usize> Leaf<K, V, B> {
     fn full(&self) -> bool {
         self.0.len() == B
@@ -915,7 +915,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
 
     fn sv_iter(mut self) -> ShortVecIter<(K, V)> {
         let v = std::mem::take(&mut self.0);
-        v.sv_iter(B)
+        v.sv_iter()
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -952,7 +952,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         }
     }
 
-    fn split(&mut self) -> ((K, V), PairVec<K, V, B>) {
+    fn split(&mut self) -> ((K, V), PairVec<K, V>) {
         let right = self.0.split_off(B / 2 + 1, B);
         let med = self.0.pop().unwrap();
         (med, right)
@@ -1092,14 +1092,8 @@ type NonLeaf<K, V, const B: usize> = Box<NonLeafInner<K, V, B>>;
 
 #[derive(Debug)]
 struct NonLeafInner<K, V, const B: usize> {
-    v: PairVec<K, V, B>,
+    v: PairVec<K, V>,
     c: TreeVec<K, V, B>,
-}
-impl<K, V, const B: usize> Drop for NonLeafInner<K, V, B> {
-    fn drop(&mut self) {
-        self.v.free(B);
-        self.c.free(B + 1);
-    }
 }
 impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     fn full(&self) -> bool {
@@ -1126,7 +1120,7 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     fn sv_iter(mut self) -> (ShortVecIter<(K, V)>, ShortVecIter<Tree<K, V, B>>) {
         let v = std::mem::take(&mut self.v);
         let c = std::mem::take(&mut self.c);
-        (v.sv_iter(B), c.sv_iter(B + 1))
+        (v.sv_iter(), c.sv_iter())
     }
 
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
@@ -2623,7 +2617,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             }
             Tree::NL(nl) => {
                 self.stack[tsp] = (nl, 0);
-                self.push(tsp+1, nl.c.ixm(0));
+                self.push(tsp + 1, nl.c.ixm(0));
             }
         }
     }
@@ -2637,7 +2631,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
             Tree::NL(nl) => {
                 let ix = nl.v.len();
                 self.stack[tsp] = (nl, ix);
-                self.push_back(tsp+1, nl.c.ixm(ix));
+                self.push_back(tsp + 1, nl.c.ixm(ix));
             }
         }
     }
@@ -2763,7 +2757,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                             (*nl).c.remove(ix);
                         }
                         self.stack[tsp] = (nl, ix);
-                        self.push(tsp+1, (*nl).c.ixm(ix));
+                        self.push(tsp + 1, (*nl).c.ixm(ix));
                         (*self.map).len -= 1;
                         return Some(kv);
                     }
@@ -2790,7 +2784,7 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                         let kv = (*nl).v.ixm(ix);
                         ix += 1;
                         self.stack[tsp] = (nl, ix);
-                        self.push(tsp+1, (*nl).c.ixm(ix));
+                        self.push(tsp + 1, (*nl).c.ixm(ix));
                         return Some((&mut kv.0, &mut kv.1));
                     }
                 }
@@ -2814,8 +2808,8 @@ impl<'a, K, V, const B: usize> CursorMutKey<'a, K, V, B> {
                     if ix > 0 {
                         ix -= 1;
                         let kv = (*nl).v.ixm(ix);
-                        self.stack[tsp] = (nl,ix);
-                        self.push_back(tsp+1, (*nl).c.ixm(ix));
+                        self.stack[tsp] = (nl, ix);
+                        self.push_back(tsp + 1, (*nl).c.ixm(ix));
                         return Some((&mut kv.0, &mut kv.1));
                     }
                 }
@@ -2981,7 +2975,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
             Tree::NL(nl) => {
                 self.stack[tsp] = (nl, 0);
                 let c = &nl.c[0];
-                self.push(tsp+1, c);
+                self.push(tsp + 1, c);
             }
         }
     }
@@ -2996,7 +2990,7 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
                 let ix = nl.v.len();
                 self.stack[tsp] = (nl, ix);
                 let c = &nl.c[ix];
-                self.push_back(tsp+1, c);
+                self.push_back(tsp + 1, c);
             }
         }
     }
@@ -3016,8 +3010,8 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
                             let kv: *const (K, V) = (*nl).v.ix(ix);
                             ix += 1;
                             self.stack[tsp] = (nl, ix);
-                            let ct = (*nl).c.ix(ix);                            
-                            self.push(tsp+1, ct);
+                            let ct = (*nl).c.ix(ix);
+                            self.push(tsp + 1, ct);
                             return Some((&(*kv).0, &(*kv).1));
                         }
                     }
@@ -3043,10 +3037,10 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
                         let (nl, mut ix) = self.stack[tsp];
                         if ix > 0 {
                             ix -= 1;
-                            let kv: *const (K, V) = (*nl).v.ix(ix);                            
+                            let kv: *const (K, V) = (*nl).v.ix(ix);
                             self.stack[tsp] = (nl, ix);
                             let ct = (*nl).c.ix(ix);
-                            self.push_back(tsp+1, ct);
+                            self.push_back(tsp + 1, ct);
                             return Some((&(*kv).0, &(*kv).1));
                         }
                     }
