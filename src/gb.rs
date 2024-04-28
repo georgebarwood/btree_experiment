@@ -723,12 +723,9 @@ impl<K, V, const B: usize> Tree<K, V, B> {
 
     fn new_root(&mut self, (med, right): Split<K, V, B>) {
         let mut nl = NonLeafInner::new();
-        // This is ok because the vecs are new and have sufficient capacity.
-        unsafe {
-            nl.v.push(med);
-            nl.c.push(std::mem::take(self));
-            nl.c.push(right);
-        }
+        nl.v.push(med);
+        nl.c.push(std::mem::take(self));
+        nl.c.push(right);
         *self = Tree::NL(nl);
     }
 
@@ -975,20 +972,14 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
             let (med, mut right) = self.split();
             if i > B / 2 {
                 i -= B / 2 + 1;
-                unsafe {
-                    right.insert(i, (key, value));
-                }
+                right.insert(i, (key, value));
             } else {
-                unsafe {
-                    self.0.insert(i, (key, value));
-                }
+                self.0.insert(i, (key, value));
             }
             let right = Tree::L(Self(right));
             x.split = Some((med, right));
         } else {
-            unsafe {
-                self.0.insert(i, (key, value));
-            }
+            self.0.insert(i, (key, value));
         }
     }
 
@@ -1188,12 +1179,8 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
             Err(i) => {
                 self.c.ixm(i).insert(key, x);
                 if let Some((med, right)) = x.split.take() {
-                    unsafe {
-                        self.v.insert(i, med);
-                    }
-                    unsafe {
-                        self.c.insert(i + 1, right);
-                    }
+                    self.v.insert(i, med);
+                    self.c.insert(i + 1, right);
                     if self.full() {
                         x.split = Some(self.split());
                     }
@@ -3001,22 +2988,20 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == (*leaf).0.len() {
-                loop {
-                    let mut tsp = self.stack.len();
-                    while tsp > 0 {
-                        tsp -= 1;
-                        let (nl, mut ix) = self.stack[tsp];
-                        if ix < (*nl).v.len() {
-                            let kv: *const (K, V) = (*nl).v.ix(ix);
-                            ix += 1;
-                            self.stack[tsp] = (nl, ix);
-                            let ct = (*nl).c.ix(ix);
-                            self.push(tsp + 1, ct);
-                            return Some((&(*kv).0, &(*kv).1));
-                        }
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, mut ix) = self.stack[tsp];
+                    if ix < (*nl).v.len() {
+                        let kv: *const (K, V) = (*nl).v.ix(ix);
+                        ix += 1;
+                        self.stack[tsp] = (nl, ix);
+                        let ct = (*nl).c.ix(ix);
+                        self.push(tsp + 1, ct);
+                        return Some((&(*kv).0, &(*kv).1));
                     }
-                    return None;
                 }
+                None
             } else {
                 let kv: *const (K, V) = (*leaf).0.ix(self.index);
                 self.index += 1;
@@ -3030,22 +3015,20 @@ impl<'a, K, V, const B: usize> Cursor<'a, K, V, B> {
         unsafe {
             let leaf = self.leaf.unwrap_unchecked();
             if self.index == 0 {
-                loop {
-                    let mut tsp = self.stack.len();
-                    while tsp > 0 {
-                        tsp -= 1;
-                        let (nl, mut ix) = self.stack[tsp];
-                        if ix > 0 {
-                            ix -= 1;
-                            let kv: *const (K, V) = (*nl).v.ix(ix);
-                            self.stack[tsp] = (nl, ix);
-                            let ct = (*nl).c.ix(ix);
-                            self.push_back(tsp + 1, ct);
-                            return Some((&(*kv).0, &(*kv).1));
-                        }
+                let mut tsp = self.stack.len();
+                while tsp > 0 {
+                    tsp -= 1;
+                    let (nl, mut ix) = self.stack[tsp];
+                    if ix > 0 {
+                        ix -= 1;
+                        let kv: *const (K, V) = (*nl).v.ix(ix);
+                        self.stack[tsp] = (nl, ix);
+                        let ct = (*nl).c.ix(ix);
+                        self.push_back(tsp + 1, ct);
+                        return Some((&(*kv).0, &(*kv).1));
                     }
-                    return None;
                 }
+                None
             } else {
                 self.index -= 1;
                 let kv: *const (K, V) = (*leaf).0.ix(self.index);

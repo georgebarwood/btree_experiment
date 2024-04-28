@@ -71,7 +71,7 @@ mod vecs;
 pub use gb::{Entry::Occupied, Entry::Vacant, UnorderedKeyError};
 
 /// Default B value ( this is capacity, usually B is defined as B/2 + 1 ).
-pub const DB: usize = 51;
+pub const DB: usize = 55;
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`] with default node capacity [DB].
 pub type BTreeMap<K, V> = gb::BTreeMap<K, V, DB>;
@@ -143,14 +143,12 @@ fn print_memory() {
 }
 
 /* mimalloc cannot be used with miri */
-/*
 #[cfg(all(test, not(miri), not(feature = "cap")))]
 use mimalloc::MiMalloc;
 
 #[cfg(all(test, not(miri), not(feature = "cap")))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-*/
 
 #[cfg(test)]
 mod mytests;

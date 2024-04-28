@@ -324,6 +324,9 @@ fn exp_insert_fwd() {
         for i in 0..n {
             t.insert(i, i);
         }
+        if _rep == 0 {
+            crate::print_memory();
+        }
     }
 }
 
@@ -334,6 +337,9 @@ fn std_insert_fwd() {
         let n = N;
         for i in 0..n {
             t.insert(i, i);
+        }
+        if _rep == 0 {
+            crate::print_memory();
         }
     }
 }
@@ -346,6 +352,9 @@ fn exp_insert_rev() {
         for i in (0..n).rev() {
             t.insert(i, i);
         }
+        if _rep == 0 {
+            crate::print_memory();
+        }
     }
 }
 
@@ -356,6 +365,9 @@ fn std_insert_rev() {
         let n = N;
         for i in (0..n).rev() {
             t.insert(i, i);
+        }
+        if _rep == 0 {
+            crate::print_memory();
         }
     }
 }

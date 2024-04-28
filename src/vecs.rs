@@ -180,7 +180,7 @@ impl<T> Drop for ShortVec<T> {
 
 impl<T> ShortVec<T> {
     pub fn new(cap: usize) -> Self {
-        assert!(cap <= u16::MAX as usize);
+        safe_assert!(cap <= u16::MAX as usize);
         let v = BasicVec::new();
         Self {
             len: 0,
@@ -200,18 +200,23 @@ impl<T> ShortVec<T> {
         self.len == 0
     }
 
+    #[inline]
     fn allocate(&mut self, amount: usize) {
-        assert!(amount <= self.cap as usize);
+        safe_assert!(amount <= self.cap as usize);
         if amount > self.alloc as usize {
-            let mut na = amount + 5;
-            if na > self.cap as usize {
-                na = self.cap as usize;
-            }
-            unsafe {
-                self.v.set_alloc(self.alloc as usize, na);
-            }
-            self.alloc = na as u16;
+            self.increase_alloc(amount);
         }
+    }
+
+    fn increase_alloc(&mut self, amount: usize) {
+        let mut na = amount + 5;
+        if na + 4 > self.cap as usize {
+            na = self.cap as usize;
+        }
+        unsafe {
+            self.v.set_alloc(self.alloc as usize, na);
+        }
+        self.alloc = na as u16;
     }
 
     fn trim(&mut self) {
@@ -223,12 +228,8 @@ impl<T> ShortVec<T> {
             self.alloc = na as u16;
         }
     }
-
-    /// # Safety
-    ///
-    /// Capacity must be greater than len.
     #[inline]
-    pub unsafe fn push(&mut self, value: T) {
+    pub fn push(&mut self, value: T) {
         self.allocate(self.len() + 1);
         unsafe {
             self.v.set(self.len(), value);
@@ -246,10 +247,7 @@ impl<T> ShortVec<T> {
         }
     }
 
-    /// # Safety
-    ///
-    /// Capacity must be greater than len.
-    pub unsafe fn insert(&mut self, at: usize, value: T) {
+    pub fn insert(&mut self, at: usize, value: T) {
         self.allocate(self.len() + 1);
         unsafe {
             if at < self.len() {
