@@ -1,14 +1,21 @@
 #[test]
 fn sizes() {
-    println!("size of Tree={}", std::mem::size_of::<Tree<u64, u64, 10>>());
-    println!("size of Leaf={}", std::mem::size_of::<Leaf<u64, u64, 10>>());
+    const N: usize = 55;
+    type K = u64;
+    type V = u64;
+    println!("size of Leaf={}", std::mem::size_of::<Leaf<K, V, N>>());
     println!(
         "size of NonLeaf={}",
-        std::mem::size_of::<NonLeaf<u64, u64, 10>>()
+        std::mem::size_of::<NonLeaf<K, V, N>>()
     );
     println!(
         "size of NonLeafInner={}",
-        std::mem::size_of::<NonLeafInner<u64, u64, 10>>()
+        std::mem::size_of::<NonLeafInner<K, V, N>>()
+    );
+    println!("size of Tree={}", std::mem::size_of::<Tree<K, V, N>>());
+    println!(
+        "size of BTreeMap={}",
+        std::mem::size_of::<BTreeMap<K, V, N>>()
     );
 }
 
@@ -915,6 +922,14 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         v.sv_iter()
     }
 
+    fn look<Q>(&self, key: &Q) -> Result<usize, usize>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        self.0.search(|x| x.0.borrow().cmp(key))
+    }
+
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
     where
         K: Borrow<Q> + Ord,
@@ -922,10 +937,10 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     {
         match bound {
             Bound::Unbounded => 0,
-            Bound::Included(k) => match self.0.search(|kv| kv.0.borrow().cmp(k)) {
+            Bound::Included(k) => match self.look(k) {
                 Ok(x) | Err(x) => x,
             },
-            Bound::Excluded(k) => match self.0.search(|kv| kv.0.borrow().cmp(k)) {
+            Bound::Excluded(k) => match self.look(k) {
                 Ok(x) => x + 1,
                 Err(x) => x,
             },
@@ -939,11 +954,11 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     {
         match bound {
             Bound::Unbounded => self.0.len(),
-            Bound::Included(k) => match self.0.search(|x| x.0.borrow().cmp(k)) {
+            Bound::Included(k) => match self.look(k) {
                 Ok(x) => x + 1,
                 Err(x) => x,
             },
-            Bound::Excluded(k) => match self.0.search(|x| x.0.borrow().cmp(k)) {
+            Bound::Excluded(k) => match self.look(k) {
                 Ok(x) | Err(x) => x,
             },
         }
@@ -959,7 +974,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
     where
         K: Ord,
     {
-        let mut i = match self.0.search(|x| x.0.borrow().cmp(&key)) {
+        let mut i = match self.look(&key) {
             Ok(i) => {
                 let value = x.value.take().unwrap();
                 x.value = Some(std::mem::replace(self.0.ixm(i), (key, value)).1);
@@ -988,7 +1003,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(key)) {
+        match self.look(key) {
             Ok(i) | Err(i) => i,
         }
     }
@@ -998,7 +1013,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(key)) {
+        match self.look(key) {
             Ok(i) => Some(self.0.remove(i)),
             Err(_i) => None,
         }
@@ -1009,7 +1024,7 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(key)) {
+        match self.look(key) {
             Ok(i) => {
                 let x = self.0.ix(i);
                 Some((&x.0, &x.1))
@@ -1023,9 +1038,9 @@ impl<K, V, const B: usize> Leaf<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.0.search(|x| x.0.borrow().cmp(key)) {
+        match self.look(key) {
             Ok(i) => Some(self.0.ixm(i)),
-            Err(_i) => None,
+            Err(_) => None,
         }
     }
 
@@ -1114,6 +1129,14 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
         (v.sv_iter(), c.sv_iter())
     }
 
+    fn look<Q>(&self, key: &Q) -> Result<usize, usize>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        self.v.search(|kv| kv.0.borrow().cmp(key))
+    }
+
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
     where
         K: Borrow<Q> + Ord,
@@ -1121,10 +1144,10 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     {
         match bound {
             Bound::Unbounded => 0,
-            Bound::Included(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+            Bound::Included(k) => match self.look(k) {
                 Ok(x) | Err(x) => x,
             },
-            Bound::Excluded(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+            Bound::Excluded(k) => match self.look(k) {
                 Ok(x) => x + 1,
                 Err(x) => x,
             },
@@ -1138,11 +1161,11 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     {
         match bound {
             Bound::Unbounded => self.v.len(),
-            Bound::Included(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+            Bound::Included(k) => match self.look(k) {
                 Ok(x) => x + 1,
                 Err(x) => x,
             },
-            Bound::Excluded(k) => match self.v.search(|kv| kv.0.borrow().cmp(k)) {
+            Bound::Excluded(k) => match self.look(k) {
                 Ok(x) | Err(x) => x,
             },
         }
@@ -1153,7 +1176,7 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.v.search(|x| x.0.borrow().cmp(key)) {
+        match self.look(key) {
             Ok(i) | Err(i) => i,
         }
     }
@@ -1171,7 +1194,7 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
     where
         K: Ord,
     {
-        match self.v.search(|x| x.0.borrow().cmp(&key)) {
+        match self.look(&key) {
             Ok(i) => {
                 let value = x.value.take().unwrap();
                 x.value = Some(std::mem::replace(self.v.ixm(i), (key, value)).1);
@@ -1194,7 +1217,7 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.v.search(|x| x.0.borrow().cmp(key)) {
+        match self.look(key) {
             Ok(i) => Some(self.remove_at(i)),
             Err(i) => self.c.ixm(i).remove(key),
         }
@@ -1231,22 +1254,13 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut i = 0;
-        while i < self.v.len() {
-            match self.v.ix(i).0.borrow().cmp(key) {
-                Ordering::Equal => {
-                    let kv = &self.v.ix(i);
-                    return Some((&kv.0, &kv.1));
-                }
-                Ordering::Greater => {
-                    return self.c.ix(i).get_key_value(key);
-                }
-                Ordering::Less => {
-                    i += 1;
-                }
+        match self.look(key) {
+            Ok(i) => {
+                let kv = self.v.ix(i);
+                Some((&kv.0, &kv.1))
             }
+            Err(i) => self.c.ix(i).get_key_value(key),
         }
-        self.c.ix(i).get_key_value(key)
     }
 
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut (K, V)>
@@ -1254,21 +1268,10 @@ impl<K, V, const B: usize> NonLeafInner<K, V, B> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let mut i = 0;
-        while i < self.v.len() {
-            match self.v.ix(i).0.borrow().cmp(key) {
-                Ordering::Equal => {
-                    return Some(self.v.ixm(i));
-                }
-                Ordering::Greater => {
-                    return self.c.ixm(i).get_mut(key);
-                }
-                Ordering::Less => {
-                    i += 1;
-                }
-            }
+        match self.look(key) {
+            Ok(i) => Some(self.v.ixm(i)),
+            Err(i) => self.c.ixm(i).get_mut(key),
         }
-        self.c.ixm(i).get_mut(key)
     }
 
     fn pop_first(&mut self) -> Option<(K, V)> {
