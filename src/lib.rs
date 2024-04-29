@@ -3,9 +3,9 @@
 
 //! This crate implements a [`BTreeMap`] similar to [`std::collections::BTreeMap`].
 //!
-//! In many common cases it should use about half as much memory.
-//!
-//! One difference is the walk and `walk_mut` methods, which can be slightly more efficient than using range and `range_mut`.
+//! The standard BtreeMap can use up to twice as much memory as required, this BTreeMap
+//! only allocates what is needed ( or a little more to avoid allocating too often ), so
+//! memory use can be up to 50% less.
 //!
 //! # Example
 //!
@@ -409,29 +409,6 @@ impl<K, V> BTreeMap<K, V> {
         Q: Ord + ?Sized,
     {
         Cursor::upper_bound(self, bound)
-    }
-
-    /// Walk the map in sorted order, calling action with reference to key-value pair for each key >= start.
-    /// If action returns true the walk terminates.
-    pub fn walk<F, Q>(&self, start: &Q, action: &mut F) -> bool
-    where
-        F: FnMut(&K, &V) -> bool,
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        self.tree.walk(start, action)
-    }
-
-    /// Walk the map in sorted order, calling action with mutable reference to key-value pair for each key >= start.
-    /// If action returns true the walk terminates.
-    /// The key can be mutated by action if it does not change the map order.
-    pub fn walk_mut<F, Q>(&mut self, start: &Q, action: &mut F) -> bool
-    where
-        F: FnMut(&mut K, &mut V) -> bool,
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        self.tree.walk_mut(start, action)
     }
 } // End impl BTreeMap
 
@@ -853,74 +830,6 @@ impl<K, V> Tree<K, V> {
         let mut x = Range::new();
         x.push_range(self, range, true);
         x
-    }
-
-    fn walk<F, Q>(&self, start: &Q, action: &mut F) -> bool
-    where
-        F: FnMut(&K, &V) -> bool,
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        match self {
-            Tree::L(leaf) => {
-                for i in leaf.skip(start)..leaf.0.len() {
-                    let kv = leaf.0.ix(i);
-                    if action(&kv.0, &kv.1) {
-                        return true;
-                    }
-                }
-            }
-            Tree::NL(nonleaf) => {
-                let i = nonleaf.v.skip(start);
-                if nonleaf.c.ix(i).walk(start, action) {
-                    return true;
-                }
-                for i in i..nonleaf.v.0.len() {
-                    let kv = nonleaf.v.0.ix(i);
-                    if start <= kv.0.borrow() && action(&kv.0, &kv.1) {
-                        return true;
-                    }
-                    if nonleaf.c.ix(i + 1).walk(start, action) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
-    fn walk_mut<F, Q>(&mut self, start: &Q, action: &mut F) -> bool
-    where
-        F: FnMut(&mut K, &mut V) -> bool,
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        match self {
-            Tree::L(leaf) => {
-                for i in leaf.skip(start)..leaf.0.len() {
-                    let kv = leaf.0.ixm(i);
-                    if action(&mut kv.0, &mut kv.1) {
-                        return true;
-                    }
-                }
-            }
-            Tree::NL(nonleaf) => {
-                let i = nonleaf.v.skip(start);
-                if i < nonleaf.c.len() && nonleaf.c.ixm(i).walk_mut(start, action) {
-                    return true;
-                }
-                for i in i..nonleaf.v.0.len() {
-                    let kv = nonleaf.v.0.ixm(i);
-                    if start <= kv.0.borrow() && action(&mut kv.0, &mut kv.1) {
-                        return true;
-                    }
-                    if nonleaf.c.ixm(i + 1).walk_mut(start, action) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 } // End impl Tree
 
