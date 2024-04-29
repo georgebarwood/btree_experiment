@@ -1372,41 +1372,7 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let (mut x, b) = (0, range.start_bound());
-        while x < self.v.0.len() {
-            match b {
-                Bound::Included(start) => {
-                    if self.v.0[x].0.borrow() >= start {
-                        break;
-                    }
-                }
-                Bound::Excluded(start) => {
-                    if self.v.0[x].0.borrow() > start {
-                        break;
-                    }
-                }
-                Bound::Unbounded => break,
-            }
-            x += 1;
-        }
-        let (mut y, b) = (self.v.0.len(), range.end_bound());
-        while y > x {
-            match b {
-                Bound::Included(end) => {
-                    if self.v.0[y - 1].0.borrow() <= end {
-                        break;
-                    }
-                }
-                Bound::Excluded(end) => {
-                    if self.v.0[y - 1].0.borrow() < end {
-                        break;
-                    }
-                }
-                Bound::Unbounded => break,
-            }
-            y -= 1;
-        }
-        (x, y)
+        self.v.get_xy(range)
     }
 } // End impl NonLeafInner
 
