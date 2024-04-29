@@ -984,6 +984,14 @@ impl<K, V> Leaf<K, V> {
         v.into_iter()
     }
 
+    fn look_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        self.0.search_to(n, |x| x.0.borrow().cmp(key))
+    }
+
     fn look<Q>(&self, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
@@ -1124,16 +1132,19 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        // ToDo : use some kind of binary search.
-        let mut x = 0;
-        while x < self.0.len() && !range.contains(self.0.ix(x).0.borrow()) {
-            x += 1;
-        }
-        let mut y = self.0.len();
-        while y > x && !range.contains(self.0.ix(y - 1).0.borrow()) {
-            y -= 1;
-        }
-        (x, y)
+        let y = match range.end_bound()
+        {
+           Bound::Unbounded => self.0.len(),
+           Bound::Included(k) => match self.look(k) { Ok(i) => i+1, Err(i) => i }
+           Bound::Excluded(k) => match self.look(k) { Ok(i) => i, Err(i) => i }
+        };
+        let x = match range.start_bound()
+        {
+           Bound::Unbounded => 0,
+           Bound::Included(k) => match self.look_to(y,k) { Ok(i) => i, Err(i) => i }
+           Bound::Excluded(k) => match self.look_to(y,k) { Ok(i) => i+1, Err(i) => i }
+        };
+        (x,y)     
     }
 
     fn iter_mut(&mut self) -> IterLeafMut<'_, K, V> {

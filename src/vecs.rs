@@ -332,11 +332,19 @@ impl<T> ShortVec<T> {
     }
 
     /// Same as `binary_search_by`, but for some obscure reason this seems to be faster.
-    pub fn search<F>(&self, mut f: F) -> Result<usize, usize>
+    pub fn search<F>(&self, f: F) -> Result<usize, usize>
     where
         F: FnMut(&T) -> Ordering,
     {
-        let (mut i, mut j) = (0, self.len());
+        self.search_to( self.len(), f )
+    }
+
+    pub fn search_to<F>(&self, n: usize, mut f: F) -> Result<usize, usize>
+    where
+        F: FnMut(&T) -> Ordering,
+    {
+        safe_assert!(n <= self.len());
+        let (mut i, mut j) = (0, n);
         while i < j {
             let m = (i + j) / 2;
             match f(self.ix(m)) {
