@@ -88,8 +88,8 @@ impl<T> BasicVec<T> {
     ///
     /// ix must be < capacity, and the element must be unset.
     #[inline]
-    pub unsafe fn set(&mut self, ix: usize, elem: T) {
-        ptr::write(self.ix(ix), elem);
+    pub unsafe fn set(&mut self, i: usize, elem: T) {
+        ptr::write(self.ix(i), elem);
     }
 
     /// Get value.
@@ -97,8 +97,8 @@ impl<T> BasicVec<T> {
     ///
     /// ix must be less < capacity, and the element must have been set.
     #[inline]
-    pub unsafe fn get(&mut self, ix: usize) -> T {
-        ptr::read(self.ix(ix))
+    pub unsafe fn get(&mut self, i: usize) -> T {
+        ptr::read(self.ix(i))
     }
 
     /// Get whole as slice.

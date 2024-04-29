@@ -192,29 +192,23 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let result = self.tree.remove(key);
-        if result.is_some() {
-            self.len -= 1;
-        }
-        result
+        let result = self.tree.remove(key)?;
+        self.len -= 1;
+        Some(result)
     }
 
     /// Remove first key-value pair from map.
     pub fn pop_first(&mut self) -> Option<(K, V)> {
-        let result = self.tree.pop_first();
-        if result.is_some() {
-            self.len -= 1;
-        }
-        result
+        let result = self.tree.pop_first()?;
+        self.len -= 1;
+        Some(result)
     }
 
     /// Remove last key-value pair from map.
     pub fn pop_last(&mut self) -> Option<(K, V)> {
-        let result = self.tree.pop_last();
-        if result.is_some() {
-            self.len -= 1;
-        }
-        result
+        let result = self.tree.pop_last()?;
+        self.len -= 1;
+        Some(result)
     }
 
     /// Remove all key-value pairs, visited in ascending order, for which f returns false.
@@ -1743,11 +1737,9 @@ impl<K, V> IntoIter<K, V> {
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
     fn next(&mut self) -> Option<Self::Item> {
-        let result = self.inner.next();
-        if result.is_some() {
-            self.len -= 1;
-        }
-        result
+        let result = self.inner.next()?;
+        self.len -= 1;
+        Some(result)
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.len, Some(self.len))
@@ -1755,11 +1747,9 @@ impl<K, V> Iterator for IntoIter<K, V> {
 }
 impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let result = self.inner.next_back();
-        if result.is_some() {
-            self.len -= 1;
-        }
-        result
+        let result = self.inner.next_back()?;
+        self.len -= 1;
+        Some(result)
     }
 }
 impl<K, V> ExactSizeIterator for IntoIter<K, V> {
