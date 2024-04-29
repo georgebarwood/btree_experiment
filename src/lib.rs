@@ -234,11 +234,8 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        if let Some((_k, v)) = self.tree.get_mut(key) {
-            Some(v)
-        } else {
-            None
-        }
+        let (_k, v) = self.tree.get_mut(key)?;
+        Some(v)
     }
 
     /// Get references to the corresponding key and value.
