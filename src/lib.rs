@@ -1223,16 +1223,7 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match bound {
-            Bound::Unbounded => 0,
-            Bound::Included(k) => match self.look(k) {
-                Ok(x) | Err(x) => x,
-            },
-            Bound::Excluded(k) => match self.look(k) {
-                Ok(x) => x + 1,
-                Err(x) => x,
-            },
-        }
+        self.v.get_lower(bound)
     }
 
     fn get_upper<Q>(&self, bound: Bound<&Q>) -> usize
@@ -1240,16 +1231,7 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match bound {
-            Bound::Unbounded => self.v.0.len(),
-            Bound::Included(k) => match self.look(k) {
-                Ok(x) => x + 1,
-                Err(x) => x,
-            },
-            Bound::Excluded(k) => match self.look(k) {
-                Ok(x) | Err(x) => x,
-            },
-        }
+        self.v.get_upper(bound)
     }
 
     fn skip<Q>(&self, key: &Q) -> usize
@@ -1257,14 +1239,12 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
-            Ok(i) | Err(i) => i,
-        }
+        self.v.skip(key)
     }
 
     fn remove_at(&mut self, i: usize) -> (K, V) {
-        if let Some(x) = self.c.ixm(i).pop_last() {
-            std::mem::replace(self.v.0.ixm(i), x)
+        if let Some(kv) = self.c.ixm(i).pop_last() {
+            std::mem::replace(self.v.0.ixm(i), kv)
         } else {
             self.c.remove(i);
             self.v.0.remove(i)
