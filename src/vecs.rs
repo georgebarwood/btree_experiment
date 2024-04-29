@@ -319,16 +319,16 @@ impl<T> ShortVec<T> {
 
     /// Get reference to ith element.
     #[inline]
-    pub fn ix(&self, ix: usize) -> &T {
-        safe_assert!(ix < self.len());
-        unsafe { &*self.v.ix(ix) }
+    pub fn ix(&self, i: usize) -> &T {
+        safe_assert!(i < self.len());
+        unsafe { &*self.v.ix(i) }
     }
 
     /// Get mutable reference to ith element.
     #[inline]
-    pub fn ixm(&mut self, ix: usize) -> &mut T {
-        safe_assert!(ix < self.len());
-        unsafe { &mut *self.v.ix(ix) }
+    pub fn ixm(&mut self, i: usize) -> &mut T {
+        safe_assert!(i < self.len());
+        unsafe { &mut *self.v.ix(i) }
     }
 
     /// Same as `binary_search_by`, but for some obscure reason this seems to be faster.

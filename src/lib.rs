@@ -7,8 +7,6 @@
 //!
 //! One difference is the walk and `walk_mut` methods, which can be slightly more efficient than using range and `range_mut`.
 //!
-//! # ToDo
-//!
 //! # Example
 //!
 //! ```
@@ -977,6 +975,27 @@ impl<K, V> Leaf<K, V> {
         self.0.search(|x| x.0.borrow().cmp(key))
     }
 
+    fn skip<Q>(&self, key: &Q) -> usize
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match self.look(key) {
+            Ok(i) | Err(i) => i,
+        }
+    }
+
+    fn skip_over<Q>(&self, key: &Q) -> usize
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match self.look(key) {
+            Ok(i) => i + 1,
+            Err(i) => i,
+        }
+    }
+
     fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
     where
         K: Borrow<Q> + Ord,
@@ -984,13 +1003,8 @@ impl<K, V> Leaf<K, V> {
     {
         match bound {
             Bound::Unbounded => 0,
-            Bound::Included(k) => match self.look(k) {
-                Ok(x) | Err(x) => x,
-            },
-            Bound::Excluded(k) => match self.look(k) {
-                Ok(x) => x + 1,
-                Err(x) => x,
-            },
+            Bound::Included(k) => self.skip(k),
+            Bound::Excluded(k) => self.skip_over(k),
         }
     }
 
@@ -1001,13 +1015,8 @@ impl<K, V> Leaf<K, V> {
     {
         match bound {
             Bound::Unbounded => self.0.len(),
-            Bound::Included(k) => match self.look(k) {
-                Ok(x) => x + 1,
-                Err(x) => x,
-            },
-            Bound::Excluded(k) => match self.look(k) {
-                Ok(x) | Err(x) => x,
-            },
+            Bound::Included(k) => self.skip_over(k),
+            Bound::Excluded(k) => self.skip(k),
         }
     }
 
@@ -1044,16 +1053,6 @@ impl<K, V> Leaf<K, V> {
             x.split = Some((med, right));
         } else {
             self.0.insert(i, (key, value));
-        }
-    }
-
-    fn skip<Q>(&self, key: &Q) -> usize
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        match self.look(key) {
-            Ok(i) | Err(i) => i,
         }
     }
 
@@ -1111,14 +1110,8 @@ impl<K, V> Leaf<K, V> {
     {
         let y = match range.end_bound() {
             Bound::Unbounded => self.0.len(),
-            Bound::Included(k) => match self.look(k) {
-                Ok(i) => i + 1,
-                Err(i) => i,
-            },
-            Bound::Excluded(k) => match self.look(k) {
-                Ok(i) => i,
-                Err(i) => i,
-            },
+            Bound::Included(k) => self.skip_over(k),
+            Bound::Excluded(k) => self.skip(k),
         };
         let x = match range.start_bound() {
             Bound::Unbounded => 0,
