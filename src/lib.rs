@@ -1592,9 +1592,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
             Tree::NL(nl) => {
                 let (x, y) = nl.v.get_xy(range);
                 let (v, mut c) = (nl.v.0[x..y].iter_mut(), nl.c[x..=y].iter_mut());
-
                 let ct_back = c.next_back();
-
                 self.bck_stk.push(StkMut { v, c });
                 if let Some(ct_back) = ct_back {
                     self.push_range_back(ct_back, range);
@@ -1604,9 +1602,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     }
     fn push_tree_back(&mut self, tree: &'a mut Tree<K, V>) {
         match tree {
-            Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.iter_mut());
-            }
+            Tree::L(leaf) => self.bck_leaf = Some(leaf.iter_mut()),
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter_mut(), nl.c.iter_mut());
                 let ct_back = c.next_back();
@@ -1781,9 +1777,7 @@ impl<K, V> IntoIterInner<K, V> {
     }
     fn push_tree(&mut self, tree: Tree<K, V>, both: bool) {
         match tree {
-            Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.into_iter());
-            }
+            Tree::L(leaf) => self.fwd_leaf = Some(leaf.into_iter()),
             Tree::NL(nl) => {
                 let (v, mut c) = nl.into_iter();
                 let ct = c.next();
@@ -1801,9 +1795,7 @@ impl<K, V> IntoIterInner<K, V> {
     }
     fn push_tree_back(&mut self, tree: Tree<K, V>) {
         match tree {
-            Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.into_iter());
-            }
+            Tree::L(leaf) => self.bck_leaf = Some(leaf.into_iter()),
             Tree::NL(nl) => {
                 let (v, mut c) = nl.into_iter();
                 let ct_back = c.next_back();
