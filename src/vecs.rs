@@ -336,7 +336,7 @@ impl<T> ShortVec<T> {
     where
         F: FnMut(&T) -> Ordering,
     {
-        self.search_to( self.len(), f )
+        self.search_to(self.len(), f)
     }
 
     pub fn search_to<F>(&self, n: usize, mut f: F) -> Result<usize, usize>

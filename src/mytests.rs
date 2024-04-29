@@ -568,3 +568,18 @@ fn various_tests() {
         }
     }
 }
+
+#[test]
+/// Not really a test, just prints the size of various types.
+fn sizes() {
+    type K = u64;
+    type V = u64;
+    println!("size of Leaf={}", std::mem::size_of::<Leaf<K, V>>());
+    println!("size of NonLeaf={}", std::mem::size_of::<NonLeaf<K, V>>());
+    println!(
+        "size of NonLeafInner={}",
+        std::mem::size_of::<NonLeafInner<K, V>>()
+    );
+    println!("size of Tree={}", std::mem::size_of::<Tree<K, V>>());
+    println!("size of BTreeMap={}", std::mem::size_of::<BTreeMap<K, V>>());
+}

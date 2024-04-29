@@ -9,8 +9,6 @@
 //!
 //! # ToDo
 //!
-//! Implement get_xy properly. Delay parent split until needed.
-//!
 //! # Example
 //!
 //! ```
@@ -28,38 +26,6 @@
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
 mod vecs;
-
-// Tests.
-
-#[cfg(all(test, not(miri), feature = "cap"))]
-use {cap::Cap, std::alloc};
-
-#[cfg(all(test, not(miri), feature = "cap"))]
-#[global_allocator]
-static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::max_value());
-
-#[cfg(test)]
-fn print_memory() {
-    #[cfg(all(test, not(miri), feature = "cap"))]
-    println!("Memory allocated: {} bytes", ALLOCATOR.allocated());
-}
-
-/* mimalloc cannot be used with miri */
-#[cfg(all(test, not(miri), not(feature = "cap")))]
-use mimalloc::MiMalloc;
-
-#[cfg(all(test, not(miri), not(feature = "cap")))]
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
-
-#[cfg(test)]
-mod mytests;
-
-#[cfg(test)]
-mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
-
-#[cfg(test)]
-use Entry::*;
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`].
 ///
@@ -313,7 +279,7 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Ord,
     {
-        let (tree, len) = (std::mem::take(&mut other.tree), other.len);
+        let (tree, len) = (mem::take(&mut other.tree), other.len);
         other.len = 0;
         let temp = BTreeMap { len, tree };
         for (k, v) in temp {
@@ -715,6 +681,7 @@ use std::{
     fmt::Debug,
     iter::FusedIterator,
     marker::PhantomData,
+    mem,
     ops::{Bound, RangeBounds},
 };
 
@@ -771,7 +738,7 @@ impl<K, V> Tree<K, V> {
     fn b(&self) -> usize {
         match self {
             Tree::L(leaf) => leaf.b(),
-            Tree::NL(nonleaf) => nonleaf.b(),
+            Tree::NL(nonleaf) => nonleaf.v.b(),
         }
     }
 
@@ -789,7 +756,7 @@ impl<K, V> Tree<K, V> {
         let b = self.b();
         let mut nl = NonLeafInner::new(b);
         nl.v.0.push(med);
-        nl.c.push(std::mem::take(self));
+        nl.c.push(mem::take(self));
         nl.c.push(right);
         *self = Tree::NL(nl);
     }
@@ -915,7 +882,7 @@ impl<K, V> Tree<K, V> {
                 }
             }
             Tree::NL(nonleaf) => {
-                let i = nonleaf.skip(start);
+                let i = nonleaf.v.skip(start);
                 if nonleaf.c.ix(i).walk(start, action) {
                     return true;
                 }
@@ -949,7 +916,7 @@ impl<K, V> Tree<K, V> {
                 }
             }
             Tree::NL(nonleaf) => {
-                let i = nonleaf.skip(start);
+                let i = nonleaf.v.skip(start);
                 if i < nonleaf.c.len() && nonleaf.c.ixm(i).walk_mut(start, action) {
                     return true;
                 }
@@ -968,20 +935,17 @@ impl<K, V> Tree<K, V> {
     }
 } // End impl Tree
 
-impl<K,V> Default for Leaf<K, V>
-{
-    fn default() -> Self
-    {
-       Self::new(DB)
+impl<K, V> Default for Leaf<K, V> {
+    fn default() -> Self {
+        Self::new(DB)
     }
 }
 
 #[derive(Debug)]
 struct Leaf<K, V>(PairVec<K, V>);
 impl<K, V> Leaf<K, V> {
-    fn new(b: usize) -> Self
-    {
-       Self(PairVec::new(b*2-1))
+    fn new(b: usize) -> Self {
+        Self(PairVec::new(b * 2 - 1))
     }
 
     fn full(&self) -> bool {
@@ -993,7 +957,7 @@ impl<K, V> Leaf<K, V> {
     }
 
     fn into_iter(mut self) -> ShortVecIter<(K, V)> {
-        let v = std::mem::take(&mut self.0);
+        let v = mem::take(&mut self.0);
         v.into_iter()
     }
 
@@ -1061,7 +1025,7 @@ impl<K, V> Leaf<K, V> {
         let mut i = match self.look(&key) {
             Ok(i) => {
                 let value = x.value.take().unwrap();
-                x.value = Some(std::mem::replace(self.0.ixm(i), (key, value)).1);
+                x.value = Some(mem::replace(self.0.ixm(i), (key, value)).1);
                 return;
             }
             Err(i) => i,
@@ -1145,19 +1109,29 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<T> + Ord,
         R: RangeBounds<T>,
     {
-        let y = match range.end_bound()
-        {
-           Bound::Unbounded => self.0.len(),
-           Bound::Included(k) => match self.look(k) { Ok(i) => i+1, Err(i) => i }
-           Bound::Excluded(k) => match self.look(k) { Ok(i) => i, Err(i) => i }
+        let y = match range.end_bound() {
+            Bound::Unbounded => self.0.len(),
+            Bound::Included(k) => match self.look(k) {
+                Ok(i) => i + 1,
+                Err(i) => i,
+            },
+            Bound::Excluded(k) => match self.look(k) {
+                Ok(i) => i,
+                Err(i) => i,
+            },
         };
-        let x = match range.start_bound()
-        {
-           Bound::Unbounded => 0,
-           Bound::Included(k) => match self.look_to(y,k) { Ok(i) => i, Err(i) => i }
-           Bound::Excluded(k) => match self.look_to(y,k) { Ok(i) => i+1, Err(i) => i }
+        let x = match range.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(k) => match self.look_to(y, k) {
+                Ok(i) => i,
+                Err(i) => i,
+            },
+            Bound::Excluded(k) => match self.look_to(y, k) {
+                Ok(i) => i + 1,
+                Err(i) => i,
+            },
         };
-        (x,y)     
+        (x, y)
     }
 
     fn iter_mut(&mut self) -> IterLeafMut<'_, K, V> {
@@ -1178,14 +1152,6 @@ struct NonLeafInner<K, V> {
     c: TreeVec<K, V>,
 }
 impl<K, V> NonLeafInner<K, V> {
-    fn full(&self) -> bool {
-        self.v.full()
-    }
-
-    fn b(&self) -> usize {
-        self.v.b()
-    }
-
     fn new(b: usize) -> Box<Self> {
         Box::new(Self {
             v: Leaf::new(b),
@@ -1194,7 +1160,7 @@ impl<K, V> NonLeafInner<K, V> {
     }
 
     fn split(&mut self) -> ((K, V), Box<Self>) {
-        let b = self.b();
+        let b = self.v.b();
         let (med, right) = self.v.split();
         let right = Box::new(Self {
             v: Leaf(right),
@@ -1205,49 +1171,17 @@ impl<K, V> NonLeafInner<K, V> {
 
     #[allow(clippy::type_complexity)]
     fn into_iter(mut self) -> (ShortVecIter<(K, V)>, ShortVecIter<Tree<K, V>>) {
-        let v = std::mem::take(&mut self.v);
-        let c = std::mem::take(&mut self.c);
+        let v = mem::take(&mut self.v);
+        let c = mem::take(&mut self.c);
         (v.into_iter(), c.into_iter())
     }
 
-    fn look<Q>(&self, key: &Q) -> Result<usize, usize>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        self.v.look(key)
-    }
-
-    fn get_lower<Q>(&self, bound: Bound<&Q>) -> usize
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        self.v.get_lower(bound)
-    }
-
-    fn get_upper<Q>(&self, bound: Bound<&Q>) -> usize
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        self.v.get_upper(bound)
-    }
-
-    fn skip<Q>(&self, key: &Q) -> usize
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        self.v.skip(key)
-    }
-
-    fn remove_at(&mut self, i: usize) -> (K, V) {
+    fn remove_at(&mut self, i: usize) -> ((K, V), usize) {
         if let Some(kv) = self.c.ixm(i).pop_last() {
-            std::mem::replace(self.v.0.ixm(i), kv)
+            (mem::replace(self.v.0.ixm(i), kv), i + 1)
         } else {
             self.c.remove(i);
-            self.v.0.remove(i)
+            (self.v.0.remove(i), i)
         }
     }
 
@@ -1255,16 +1189,16 @@ impl<K, V> NonLeafInner<K, V> {
     where
         K: Ord,
     {
-        match self.look(&key) {
+        match self.v.look(&key) {
             Ok(i) => {
                 let value = x.value.take().unwrap();
-                x.value = Some(std::mem::replace(self.v.0.ixm(i), (key, value)).1);
+                x.value = Some(mem::replace(self.v.0.ixm(i), (key, value)).1);
             }
             Err(mut i) => {
                 self.c.ixm(i).insert(key, x);
                 if let Some((med, right)) = x.split.take() {
-                    if self.full() {
-                        let b = self.b();
+                    if self.v.full() {
+                        let b = self.v.b();
                         let (pmed, mut pright) = self.split();
                         if i > b {
                             i -= b + 1;
@@ -1289,8 +1223,8 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
-            Ok(i) => Some(self.remove_at(i)),
+        match self.v.look(key) {
+            Ok(i) => Some(self.remove_at(i).0),
             Err(i) => self.c.ixm(i).remove(key),
         }
     }
@@ -1309,7 +1243,7 @@ impl<K, V> NonLeafInner<K, V> {
             } else {
                 removed += 1;
                 if let Some(x) = self.c.ixm(i).pop_last() {
-                    let _ = std::mem::replace(self.v.0.ixm(i), x);
+                    let _ = mem::replace(self.v.0.ixm(i), x);
                     i += 1;
                 } else {
                     self.c.remove(i);
@@ -1326,7 +1260,7 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
+        match self.v.look(key) {
             Ok(i) => Some(self.v.0.ix(i)),
             Err(i) => self.c.ix(i).get_key_value(key),
         }
@@ -1337,7 +1271,7 @@ impl<K, V> NonLeafInner<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
+        match self.v.look(key) {
             Ok(i) => Some(self.v.0.ixm(i)),
             Err(i) => self.c.ixm(i).get_mut(key),
         }
@@ -1364,15 +1298,6 @@ impl<K, V> NonLeafInner<K, V> {
             self.c.pop();
             self.v.0.pop()
         }
-    }
-
-    fn get_xy<T, R>(&self, range: &R) -> (usize, usize)
-    where
-        T: Ord + ?Sized,
-        K: Borrow<T> + Ord,
-        R: RangeBounds<T>,
-    {
-        self.v.get_xy(range)
     }
 } // End impl NonLeafInner
 
@@ -1540,7 +1465,7 @@ where
 
     /// Update the value returns the old value.
     pub fn insert(&mut self, value: V) -> V {
-        std::mem::replace(self.get_mut(), value)
+        mem::replace(self.get_mut(), value)
     }
 }
 
@@ -1649,7 +1574,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
                 self.fwd_leaf = Some(IterLeafMut(leaf.0[x..y].iter_mut()));
             }
             Tree::NL(nl) => {
-                let (x, y) = nl.get_xy(range);
+                let (x, y) = nl.v.get_xy(range);
                 let (v, mut c) = (nl.v.0[x..y].iter_mut(), nl.c[x..=y].iter_mut());
 
                 let ct = c.next();
@@ -1678,7 +1603,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
                 self.bck_leaf = Some(IterLeafMut(leaf.0[x..y].iter_mut()));
             }
             Tree::NL(nl) => {
-                let (x, y) = nl.get_xy(range);
+                let (x, y) = nl.v.get_xy(range);
                 let (v, mut c) = (nl.v.0[x..y].iter_mut(), nl.c[x..=y].iter_mut());
 
                 let ct_back = c.next_back();
@@ -2100,7 +2025,7 @@ impl<'a, K, V> Range<'a, K, V> {
                 self.fwd_leaf = Some(IterLeaf(leaf.0[x..y].iter()));
             }
             Tree::NL(nl) => {
-                let (x, y) = nl.get_xy(range);
+                let (x, y) = nl.v.get_xy(range);
                 let (v, mut c) = (nl.v.0[x..y].iter(), nl.c[x..=y].iter());
 
                 let ct = c.next();
@@ -2129,7 +2054,7 @@ impl<'a, K, V> Range<'a, K, V> {
                 self.bck_leaf = Some(IterLeaf(leaf.0[x..y].iter()));
             }
             Tree::NL(nl) => {
-                let (x, y) = nl.get_xy(range);
+                let (x, y) = nl.v.get_xy(range);
                 let (v, mut c) = (nl.v.0[x..y].iter(), nl.c[x..=y].iter());
                 let ct_back = c.next_back();
                 self.bck_stk.push(Stk { v, c });
@@ -2583,7 +2508,7 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
                 self.leaf = Some(leaf);
             }
             Tree::NL(nl) => {
-                let ix = nl.get_lower(bound);
+                let ix = nl.v.get_lower(bound);
                 self.stack.push((nl, ix));
                 self.push_lower(nl.c.ixm(ix), bound);
             }
@@ -2601,7 +2526,7 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
                 self.leaf = Some(leaf);
             }
             Tree::NL(nl) => {
-                let ix = nl.get_upper(bound);
+                let ix = nl.v.get_upper(bound);
                 self.stack.push((nl, ix));
                 self.push_upper(nl.c.ixm(ix), bound);
             }
@@ -2711,8 +2636,8 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
     fn save_split(&mut self, med: (K, V), tree: Tree<K, V>, r: usize) -> *mut Tree<K, V> {
         unsafe {
             if let Some((mut nl, mut ix)) = self.stack.pop() {
-                if (*nl).full() {
-                    let b = (*nl).b();
+                if (*nl).v.full() {
+                    let b = (*nl).v.b();
                     let (med, right) = (*nl).split();
                     let r = usize::from(ix > b);
                     ix -= r * (b + 1);
@@ -2747,16 +2672,9 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
                 let mut tsp = self.stack.len();
                 while tsp > 0 {
                     tsp -= 1;
-                    let (nl, mut ix) = self.stack[tsp];
+                    let (nl, ix) = self.stack[tsp];
                     if ix < (*nl).v.0.len() {
-                        let kv;
-                        if let Some(rep) = (*nl).c.ixm(ix).pop_last() {
-                            kv = std::mem::replace((*nl).v.0.ixm(ix), rep);
-                            ix += 1;
-                        } else {
-                            kv = (*nl).v.0.remove(ix);
-                            (*nl).c.remove(ix);
-                        }
+                        let (kv, ix) = (*nl).remove_at(ix);
                         self.stack[tsp] = (nl, ix);
                         self.push(tsp + 1, (*nl).c.ixm(ix));
                         (*self.map).len -= 1;
@@ -2940,7 +2858,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 self.index = leaf.get_lower(bound);
             }
             Tree::NL(nl) => {
-                let ix = nl.get_lower(bound);
+                let ix = nl.v.get_lower(bound);
                 self.stack.push((nl, ix));
                 let c = &nl.c[ix];
                 self.push_lower(c, bound);
@@ -2959,7 +2877,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 self.index = leaf.get_upper(bound);
             }
             Tree::NL(nl) => {
-                let ix = nl.get_upper(bound);
+                let ix = nl.v.get_upper(bound);
                 self.stack.push((nl, ix));
                 let c = &nl.c[ix];
                 self.push_upper(c, bound);
@@ -3091,17 +3009,34 @@ impl<'a, K, V> Cursor<'a, K, V> {
     }
 }
 
-#[test]
-/// Not really a test, just prints the size of various types.
-fn sizes() {
-    type K = u64;
-    type V = u64;
-    println!("size of Leaf={}", std::mem::size_of::<Leaf<K, V>>());
-    println!("size of NonLeaf={}", std::mem::size_of::<NonLeaf<K, V>>());
-    println!(
-        "size of NonLeafInner={}",
-        std::mem::size_of::<NonLeafInner<K, V>>()
-    );
-    println!("size of Tree={}", std::mem::size_of::<Tree<K, V>>());
-    println!("size of BTreeMap={}", std::mem::size_of::<BTreeMap<K, V>>());
+// Tests.
+
+#[cfg(all(test, not(miri), feature = "cap"))]
+use {cap::Cap, std::alloc};
+
+#[cfg(all(test, not(miri), feature = "cap"))]
+#[global_allocator]
+static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::max_value());
+
+#[cfg(test)]
+fn print_memory() {
+    #[cfg(all(test, not(miri), feature = "cap"))]
+    println!("Memory allocated: {} bytes", ALLOCATOR.allocated());
 }
+
+/* mimalloc cannot be used with miri */
+#[cfg(all(test, not(miri), not(feature = "cap")))]
+use mimalloc::MiMalloc;
+
+#[cfg(all(test, not(miri), not(feature = "cap")))]
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
+#[cfg(test)]
+mod mytests;
+
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+
+#[cfg(test)]
+use Entry::*;
