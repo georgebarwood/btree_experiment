@@ -1,5 +1,4 @@
 use crate::*;
-use std::ops::Bound;
 
 const REP: usize = if cfg!(miri) { 10 } else { 1000 };
 const N: usize = if cfg!(miri) { 1000 } else { 10000 };

@@ -8,12 +8,8 @@ use crate::*;
 
 use std::{
     assert_matches::assert_matches,
-    borrow::Borrow,
-    cmp::Ordering,
     fmt::Debug,
-    ops::Bound,
     ops::Bound::{Excluded, Included, Unbounded},
-    ops::RangeBounds,
     rc::Rc,
 };
 

@@ -191,9 +191,18 @@ impl<T> ShortVec<T> {
         }
     }
 
+    pub fn full(&self) -> bool {
+        self.len == self.cap
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.len as usize
+    }
+
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.cap as usize
     }
 
     #[inline]
