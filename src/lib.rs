@@ -268,9 +268,10 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Ord,
     {
-        let (tree, len) = (mem::take(&mut other.tree), other.len);
+        let rep = Tree::new( other.tree.b() );
+        let tree = mem::replace(&mut other.tree,rep);
+        let temp = BTreeMap { len: other.len, tree };
         other.len = 0;
-        let temp = BTreeMap { len, tree };
         for (k, v) in temp {
             self.insert(k, v);
         }
