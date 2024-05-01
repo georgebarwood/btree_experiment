@@ -397,6 +397,9 @@ impl<K, V> Drop for PairVec<K, V> {
     }
 }
 
+unsafe impl<K: Send, V:Send> Send for PairVec<K,V> {}
+unsafe impl<K: Sync, V:Sync> Sync for PairVec<K,V> {}
+
 impl<K, V> PairVec<K, V> {
     /// ...
     pub fn new(capacity: usize) -> Self {

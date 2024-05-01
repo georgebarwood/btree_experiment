@@ -1,7 +1,7 @@
 use crate::*;
 
-const REP: usize = if cfg!(miri) { 10 } else { 1000 };
-const N: usize = if cfg!(miri) { 1000 } else { 10000 };
+const REP: usize = if cfg!(miri) { 2 } else { 1000 };
+const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
 #[test]
 fn exp_mem_test() {

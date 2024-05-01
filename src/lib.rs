@@ -241,8 +241,7 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let kv = self.tree.get_key_value(key)?;
-        Some((&kv.0, &kv.1))
+        self.tree.get_key_value(key)
     }
 
     /// Get references to first key and value.
@@ -1535,8 +1534,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     fn steal_bck(&mut self) -> StealResultMut<'a, K, V> {
         for s in &mut self.bck_stk {
             if s.v.len() > s.c.len() {
-                let kv = s.v.next().unwrap();
-                return StealResultMut::KV(kv);
+                return StealResultMut::KV(s.v.next().unwrap());
             } else if let Some(ct) = s.c.next() {
                 return StealResultMut::CT(ct);
             }
@@ -1546,8 +1544,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     fn steal_fwd(&mut self) -> StealResultMut<'a, K, V> {
         for s in &mut self.fwd_stk {
             if s.v.len() > s.c.len() {
-                let kv = s.v.next_back().unwrap();
-                return StealResultMut::KV(kv);
+                return StealResultMut::KV(s.v.next_back().unwrap());
             } else if let Some(ct) = s.c.next_back() {
                 return StealResultMut::CT(ct);
             }
@@ -1728,8 +1725,7 @@ impl<K, V> IntoIterInner<K, V> {
     fn steal_bck(&mut self) -> StealResultCon<K, V> {
         for s in &mut self.bck_stk {
             if s.v.len() > s.c.len() {
-                let kv = s.v.next().unwrap();
-                return StealResultCon::KV(kv);
+                return StealResultCon::KV(s.v.next().unwrap());
             } else if let Some(ct) = s.c.next() {
                 return StealResultCon::CT(ct);
             }
@@ -1739,8 +1735,7 @@ impl<K, V> IntoIterInner<K, V> {
     fn steal_fwd(&mut self) -> StealResultCon<K, V> {
         for s in &mut self.fwd_stk {
             if s.v.len() > s.c.len() {
-                let kv = s.v.next_back().unwrap();
-                return StealResultCon::KV(kv);
+                return StealResultCon::KV(s.v.next_back().unwrap());
             } else if let Some(ct) = s.c.next_back() {
                 return StealResultCon::CT(ct);
             }
@@ -1976,8 +1971,7 @@ impl<'a, K, V> Range<'a, K, V> {
     fn steal_bck(&mut self) -> StealResult<'a, K, V> {
         for s in &mut self.bck_stk {
             if s.v.len() > s.c.len() {
-                let kv = s.v.next().unwrap();
-                return StealResult::KV((&kv.0, &kv.1));
+                return StealResult::KV(s.v.next().unwrap());
             } else if let Some(ct) = s.c.next() {
                 return StealResult::CT(ct);
             }
@@ -1987,8 +1981,7 @@ impl<'a, K, V> Range<'a, K, V> {
     fn steal_fwd(&mut self) -> StealResult<'a, K, V> {
         for s in &mut self.fwd_stk {
             if s.v.len() > s.c.len() {
-                let kv = s.v.next_back().unwrap();
-                return StealResult::KV((&kv.0, &kv.1));
+                return StealResult::KV(s.v.next_back().unwrap());
             } else if let Some(ct) = s.c.next_back() {
                 return StealResult::CT(ct);
             }
@@ -2812,18 +2805,18 @@ impl<'a, K, V> Cursor<'a, K, V> {
                     let (nl, mut ix) = self.stack[tsp];
                     if ix > 0 {
                         ix -= 1;
-                        let kv = (*nl).v.0.ixp(ix);
+                        let kv = (*nl).v.0.ix(ix);
                         self.stack[tsp] = (nl, ix);
                         let ct = (*nl).c.ix(ix);
                         self.push_back(tsp + 1, ct);
-                        return Some((&(*kv.0), &(*kv.1)));
+                        return Some(kv);
                     }
                 }
                 None
             } else {
                 self.index -= 1;
-                let kv = (*leaf).0.ixp(self.index);
-                Some((&(*kv.0), &(*kv.1)))
+                let kv = (*leaf).0.ix(self.index);
+                Some(kv)
             }
         }
     }
@@ -2894,8 +2887,8 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-//#[cfg(test)]
-//mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
 
-//#[cfg(test)]
-//use Entry::*;
+#[cfg(test)]
+use Entry::*;
