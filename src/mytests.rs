@@ -30,6 +30,48 @@ fn std_mem_test() {
     crate::print_memory();
 }
 
+const ADJ : usize = 50;
+
+#[test]
+fn exp_get_test() {
+    let mut m = /*std::collections::*/ BTreeMap::new();
+    let mut c = m.lower_bound_mut(Bound::Unbounded);
+    let n = N/ADJ;
+    for i in 0..n {
+        let v = (i,i,i,i);
+        c.insert_before(i, v ).unwrap();
+    }
+    assert!(m.len() == n);
+    print_memory();
+    for _rep in 0..REP*ADJ {
+        for i in 0..n
+        {
+           let v = (i,i,i,i);
+           assert!( m[&i] == v );
+        }           
+    }
+}
+
+#[test]
+fn std_get_test() {
+    let mut m = std::collections:: BTreeMap::new();
+    let mut c = m.lower_bound_mut(Bound::Unbounded);
+    let n = N/ADJ;
+    for i in 0..n {
+        let v = (i,i,i,i);
+        c.insert_before(i, v ).unwrap();
+    }
+    assert!(m.len() == n);
+    print_memory();
+    for _rep in 0..REP*ADJ {
+        for i in 0..n
+        {
+           let v = (i,i,i,i);
+           assert!( m[&i] == v );
+        }           
+    }
+}
+
 #[test]
 fn exp_clone_test() {
     let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::new();
