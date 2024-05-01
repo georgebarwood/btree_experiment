@@ -447,6 +447,9 @@ impl<K, V> PairVec<K, V> {
     }
 
     fn alloc(&mut self, amount: usize) {
+        if mem::size_of::<K>() == 0 && mem::size_of::<V>()  == 0 {
+            return;
+        }
         unsafe {
             let (old_layout, old_off) = Self::layout(self.alloc as usize);
 
@@ -753,26 +756,22 @@ impl<'a, K, V> IterPairVec<'a, K, V> {
 impl<'a, K, V> Iterator for IterPairVec<'a, K, V> {
     type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            if self.ix == self.ixb {
-                return None;
-            }
-            let (kp, vp) = self.v.ixp(self.ix);
-            self.ix += 1;
-            Some((&*kp, &*vp))
+        if self.ix == self.ixb {
+            return None;
         }
+        let kv = self.v.ix(self.ix);
+        self.ix += 1;
+        Some(kv)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterPairVec<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        unsafe {
-            if self.ix == self.ixb {
-                return None;
-            }
-            self.ixb -= 1;
-            let (kp, vp) = self.v.ixp(self.ixb);
-            Some((&*kp, &*vp))
+        if self.ix == self.ixb {
+            return None;
         }
+        self.ixb -= 1;
+        let kv = self.v.ix(self.ixb);
+        Some(kv)
     }
 }
 
