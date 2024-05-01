@@ -2589,8 +2589,7 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
             } else {
                 let leaf = self.leaf.unwrap_unchecked();
                 self.index -= 1;
-                let kv = (*leaf).0.ixbm(self.index);
-                Some(kv)
+                Some((*leaf).0.ixbm(self.index))
             }
         }
     }
@@ -2603,14 +2602,12 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
             if self.index == (*leaf).0.len() {
                 for (nl, ix) in self.stack.iter().rev() {
                     if *ix < (**nl).v.0.len() {
-                        let kv = (**nl).v.0.ixbm(*ix);
-                        return Some(kv);
+                        return Some((**nl).v.0.ixbm(*ix));
                     }
                 }
                 None
             } else {
-                let kv = (*leaf).0.ixbm(self.index);
-                Some(kv)
+                Some((*leaf).0.ixbm(self.index))
             }
         }
     }
@@ -2621,15 +2618,13 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
             if self.index == 0 {
                 for (nl, ix) in self.stack.iter().rev() {
                     if *ix > 0 {
-                        let kv = (**nl).v.0.ixbm(*ix - 1);
-                        return Some(kv);
+                        return Some((**nl).v.0.ixbm(*ix - 1));
                     }
                 }
                 None
             } else {
                 let leaf = self.leaf.unwrap_unchecked();
-                let kv = (*leaf).0.ixbm(self.index - 1);
-                Some(kv)
+                Some((*leaf).0.ixbm(self.index - 1))
             }
         }
     }
@@ -2777,19 +2772,19 @@ impl<'a, K, V> Cursor<'a, K, V> {
                     tsp -= 1;
                     let (nl, mut ix) = self.stack[tsp];
                     if ix < (*nl).v.0.len() {
-                        let kv = (*nl).v.0.ixp(ix);
+                        let kv = (*nl).v.0.ix(ix);
                         ix += 1;
                         self.stack[tsp] = (nl, ix);
                         let ct = (*nl).c.ix(ix);
                         self.push(tsp + 1, ct);
-                        return Some((&(*kv.0), &(*kv.1)));
+                        return Some(kv);
                     }
                 }
                 None
             } else {
-                let kv = (*leaf).0.ixp(self.index);
+                let kv = (*leaf).0.ix(self.index);
                 self.index += 1;
-                Some((&(*kv.0), &(*kv.1)))
+                Some(kv)
             }
         }
     }
@@ -2815,8 +2810,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 None
             } else {
                 self.index -= 1;
-                let kv = (*leaf).0.ix(self.index);
-                Some(kv)
+                Some((*leaf).0.ix(self.index))
             }
         }
     }
@@ -2829,14 +2823,12 @@ impl<'a, K, V> Cursor<'a, K, V> {
             if self.index == (*leaf).0.len() {
                 for (nl, ix) in self.stack.iter().rev() {
                     if *ix < (**nl).v.0.len() {
-                        let kv = (**nl).v.0.ixp(*ix);
-                        return Some((&(*kv.0), &(*kv.1)));
+                        return Some((**nl).v.0.ix(*ix));
                     }
                 }
                 None
             } else {
-                let kv = (*leaf).0.ixp(self.index);
-                Some((&(*kv.0), &(*kv.1)))
+                Some((*leaf).0.ix(self.index))
             }
         }
     }
@@ -2848,14 +2840,12 @@ impl<'a, K, V> Cursor<'a, K, V> {
             if self.index == 0 {
                 for (nl, ix) in self.stack.iter().rev() {
                     if *ix > 0 {
-                        let kv = (**nl).v.0.ixp(*ix - 1);
-                        return Some((&(*kv.0), &(*kv.1)));
+                        return Some((**nl).v.0.ix(*ix - 1));
                     }
                 }
                 None
             } else {
-                let kv = (*leaf).0.ixp(self.index - 1);
-                Some((&(*kv.0), &(*kv.1)))
+                Some((*leaf).0.ix(self.index - 1))
             }
         }
     }

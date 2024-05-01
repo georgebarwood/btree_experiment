@@ -397,11 +397,10 @@ impl<K, V> Drop for PairVec<K, V> {
     }
 }
 
-unsafe impl<K: Send, V:Send> Send for PairVec<K,V> {}
-unsafe impl<K: Sync, V:Sync> Sync for PairVec<K,V> {}
+unsafe impl<K: Send, V: Send> Send for PairVec<K, V> {}
+unsafe impl<K: Sync, V: Sync> Sync for PairVec<K, V> {}
 
 impl<K, V> PairVec<K, V> {
-    /// ...
     pub fn new(capacity: usize) -> Self {
         let capacity = capacity as u16;
         Self {
@@ -413,22 +412,18 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    /// ...
     pub fn len(&self) -> usize {
         self.len as usize
     }
 
-    /// ...
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    /// ...
     pub fn full(&self) -> bool {
         self.len == self.capacity
     }
 
-    /// ...
     pub fn cap(&self) -> usize {
         self.capacity as usize
     }
@@ -440,20 +435,17 @@ impl<K, V> PairVec<K, V> {
         (layout, off)
     }
 
-    ///
-    pub fn trim(&mut self) {
+    fn trim(&mut self) {
         self.alloc(self.len());
     }
 
-    /// ...
-    pub fn allocate(&mut self, mut amount: usize) {
+    fn allocate(&mut self, mut amount: usize) {
         if amount > self.capacity as usize {
             amount = self.capacity as usize;
         }
         self.alloc(amount);
     }
 
-    /// ...
     fn alloc(&mut self, amount: usize) {
         unsafe {
             let (old_layout, old_off) = Self::layout(self.alloc as usize);
@@ -490,7 +482,6 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    /// ...
     pub fn split_off(&mut self, at: usize, r: usize) -> Self {
         safe_assert!(at <= self.len());
         safe_assert!(r <= 1);
@@ -505,11 +496,10 @@ impl<K, V> PairVec<K, V> {
         }
         result.len = len as u16;
         self.len -= len as u16;
-        self.allocate(self.len() + (1 - r)*5);
+        self.allocate(self.len() + (1 - r) * 5);
         result
     }
 
-    /// ...
     pub fn insert(&mut self, at: usize, (key, value): (K, V)) {
         safe_assert!(self.len < self.capacity);
         safe_assert!(at <= self.len());
@@ -529,7 +519,6 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    /// ...
     pub fn remove(&mut self, at: usize) -> (K, V) {
         safe_assert!(at < self.len());
         unsafe {
@@ -545,7 +534,6 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    /// ...
     pub fn push(&mut self, (key, value): (K, V)) {
         safe_assert!(self.len < self.capacity);
         if self.alloc == self.len {
@@ -558,7 +546,7 @@ impl<K, V> PairVec<K, V> {
             self.len += 1;
         }
     }
-    /// ...
+
     pub fn pop(&mut self) -> Option<(K, V)> {
         unsafe {
             if self.len == 0 {
@@ -570,7 +558,6 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    /// Same as `binary_search_by`, but for some obscure reason this seems to be faster.
     #[inline]
     pub fn search<F>(&self, f: F) -> Result<usize, usize>
     where
@@ -579,7 +566,6 @@ impl<K, V> PairVec<K, V> {
         self.search_to(self.len(), f)
     }
 
-    /// ...
     pub fn search_to<F>(&self, n: usize, mut f: F) -> Result<usize, usize>
     where
         F: FnMut(&K) -> Ordering,
@@ -597,7 +583,6 @@ impl<K, V> PairVec<K, V> {
         Err(i)
     }
 
-    /// ...
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&K, &mut V) -> bool,
@@ -637,7 +622,7 @@ impl<K, V> PairVec<K, V> {
     }
 
     #[inline]
-    pub unsafe fn ixmp(&mut self, i: usize) -> (*mut K, *mut V) {
+    unsafe fn ixmp(&mut self, i: usize) -> (*mut K, *mut V) {
         let (_, off) = Self::layout(self.alloc as usize);
         let kp = self.p.as_ptr().cast::<K>().add(i);
         let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
@@ -645,7 +630,7 @@ impl<K, V> PairVec<K, V> {
     }
 
     #[inline]
-    pub unsafe fn ixp(&self, i: usize) -> (*const K, *const V) {
+    unsafe fn ixp(&self, i: usize) -> (*const K, *const V) {
         let (_, off) = Self::layout(self.alloc as usize);
         let kp = self.p.as_ptr().cast::<K>().add(i);
         let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
@@ -704,7 +689,7 @@ impl<K, V> PairVec<K, V> {
             ixb: self.len(),
         }
     }
-    /// ...
+
     pub fn range(&self, x: usize, y: usize) -> IterPairVec<K, V> {
         safe_assert!(x <= y && y <= self.len());
         IterPairVec {
@@ -713,7 +698,7 @@ impl<K, V> PairVec<K, V> {
             ixb: y,
         }
     }
-    /// ...
+
     pub fn iter_mut(&mut self) -> IterMutPairVec<K, V> {
         let ixb = self.len();
         IterMutPairVec {
@@ -722,7 +707,7 @@ impl<K, V> PairVec<K, V> {
             ixb,
         }
     }
-    /// ...
+
     pub fn range_mut(&mut self, x: usize, y: usize) -> IterMutPairVec<K, V> {
         safe_assert!(x <= y && y <= self.len());
         IterMutPairVec {
@@ -731,7 +716,7 @@ impl<K, V> PairVec<K, V> {
             ixb: y,
         }
     }
-    /// ...
+
     pub fn into_iter(self) -> IntoIterPairVec<K, V> {
         let ixb = self.len();
         IntoIterPairVec {
