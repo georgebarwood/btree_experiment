@@ -447,7 +447,7 @@ impl<K, V> PairVec<K, V> {
     }
 
     fn alloc(&mut self, amount: usize) {
-        if mem::size_of::<K>() == 0 && mem::size_of::<V>()  == 0 {
+        if mem::size_of::<K>() == 0 && mem::size_of::<V>() == 0 {
             return;
         }
         unsafe {
@@ -736,9 +736,7 @@ where
     V: Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_map()
-            .entries(self.iter().map(|(k, v)| (k, v)))
-            .finish()
+        fmt.debug_map().entries(self.iter()).finish()
     }
 }
 

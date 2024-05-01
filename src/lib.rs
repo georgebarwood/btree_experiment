@@ -1140,8 +1140,8 @@ impl<K, V> NonLeafInner<K, V> {
         let mut i = 0;
         while i < self.v.0.len() {
             removed += self.c.ixm(i).retain(f);
-            let mut e = self.v.0.ixm(i);
-            if f(&e.0, &mut e.1) {
+            let e = self.v.0.ixm(i);
+            if f(e.0, e.1) {
                 i += 1;
             } else {
                 removed += 1;
@@ -2003,7 +2003,7 @@ impl<'a, K, V> Iterator for Range<'a, K, V> {
                     if let Some(ct) = s.c.next() {
                         self.push_tree(ct, false);
                     }
-                    return Some((&kv.0, &kv.1));
+                    return Some(kv);
                 }
                 self.fwd_stk.pop();
             } else {
@@ -2037,7 +2037,7 @@ impl<'a, K, V> DoubleEndedIterator for Range<'a, K, V> {
                     if let Some(ct) = s.c.next_back() {
                         self.push_tree_back(ct);
                     }
-                    return Some((&kv.0, &kv.1));
+                    return Some(kv);
                 }
                 self.bck_stk.pop();
             } else {
