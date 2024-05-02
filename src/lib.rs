@@ -643,6 +643,7 @@ where
 use std::{
     borrow::Borrow,
     cmp::Ordering,
+    error::Error,
     fmt,
     fmt::Debug,
     iter::FusedIterator,
@@ -1217,6 +1218,27 @@ where
     /// Value that was not inserted.
     pub value: V,
 }
+impl<K: Debug + Ord, V: Debug> Debug for OccupiedError<'_, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OccupiedError")
+            .field("key", self.entry.key())
+            .field("old_value", self.entry.get())
+            .field("new_value", &self.value)
+            .finish()
+    }
+}
+impl<'a, K: Debug + Ord, V: Debug> fmt::Display for OccupiedError<'a, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "failed to insert {:?}, key {:?} already exists with value {:?}",
+            self.value,
+            self.entry.key(),
+            self.entry.get(),
+        )
+    }
+}
+impl<'a, K: Debug + Ord, V: Debug> Error for OccupiedError<'a, K, V> {}
 
 /// Entry in `BTreeMap`, returned by [`BTreeMap::entry`].
 pub enum Entry<'a, K, V> {
@@ -1303,6 +1325,12 @@ pub struct VacantEntry<'a, K, V> {
     cursor: CursorMut<'a, K, V>,
 }
 
+impl<'a, K: Debug+Ord, V> Debug for VacantEntry<'a, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("VacantEntry").field(self.key()).finish()
+    }
+}
+
 impl<'a, K, V> VacantEntry<'a, K, V>
 where
     K: Ord,
@@ -1327,6 +1355,14 @@ where
 /// Occupied [Entry].
 pub struct OccupiedEntry<'a, K, V> {
     cursor: CursorMut<'a, K, V>,
+}
+impl<K: Debug + Ord, V: Debug> Debug for OccupiedEntry<'_, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OccupiedEntry")
+            .field("key", self.key())
+            .field("value", self.get())
+            .finish()
+    }
 }
 
 impl<'a, K, V> OccupiedEntry<'a, K, V>
@@ -2111,6 +2147,7 @@ impl<K, V> FusedIterator for IntoValues<K, V> {}
 // Trivial iterators.
 
 /// Iterator returned by [`BTreeMap::values_mut`].
+#[derive(Debug)]
 pub struct ValuesMut<'a, K, V>(IterMut<'a, K, V>);
 impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
     type Item = &'a mut V;
@@ -2131,7 +2168,7 @@ impl<'a, K, V> ExactSizeIterator for ValuesMut<'a, K, V> {
 impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> {}
 
 /// Iterator returned by [`BTreeMap::values`].
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Values<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Values<'a, K, V> {
     type Item = &'a V;
@@ -2152,7 +2189,7 @@ impl<'a, K, V> ExactSizeIterator for Values<'a, K, V> {
 impl<'a, K, V> FusedIterator for Values<'a, K, V> {}
 
 /// Iterator returned by [`BTreeMap::keys`].
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Keys<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
     type Item = &'a K;
@@ -2213,8 +2250,14 @@ impl<'a, K, V, F> FusedIterator for ExtractIf<'a, K, V, F> where F: FnMut(&K, &m
 // Cursors.
 
 /// Error type for [`CursorMut::insert_before`] and [`CursorMut::insert_after`].
-#[derive(Debug, Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct UnorderedKeyError {}
+impl fmt::Display for UnorderedKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "key is not properly ordered relative to neighbors")
+    }
+}
+impl std::error::Error for UnorderedKeyError {}
 
 /// Cursor that allows mutation of map, returned by [`BTreeMap::lower_bound_mut`], [`BTreeMap::upper_bound_mut`].
 pub struct CursorMut<'a, K, V>(CursorMutKey<'a, K, V>);
