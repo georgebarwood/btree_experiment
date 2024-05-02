@@ -2123,6 +2123,11 @@ impl<'a, K, V> DoubleEndedIterator for ValuesMut<'a, K, V> {
         self.0.next_back().map(|(_, v)| v)
     }
 }
+impl<'a, K, V> ExactSizeIterator for ValuesMut<'a, K, V> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> {}
 
 /// Iterator returned by [`BTreeMap::values`].
@@ -2137,6 +2142,11 @@ impl<'a, K, V> Iterator for Values<'a, K, V> {
 impl<'a, K, V> DoubleEndedIterator for Values<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(_, v)| v)
+    }
+}
+impl<'a, K, V> ExactSizeIterator for Values<'a, K, V> {
+    fn len(&self) -> usize {
+        self.0.len()
     }
 }
 impl<'a, K, V> FusedIterator for Values<'a, K, V> {}
