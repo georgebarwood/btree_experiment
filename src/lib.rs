@@ -36,6 +36,7 @@
 ///
 /// Roughly speaking, unsafe code is limited to the implementation of [`CursorMut`] and [`CursorMutKey`].
 
+#[derive(Clone)]
 pub struct BTreeMap<K, V> {
     len: usize,
     tree: Tree<K, V>,
@@ -461,22 +462,6 @@ impl<'a, K, V> IntoIterator for &'a mut BTreeMap<K, V> {
         self.iter_mut()
     }
 }
-impl<K, V> Clone for BTreeMap<K, V>
-where
-    K: Clone + Ord,
-    V: Clone,
-{
-    fn clone(&self) -> BTreeMap<K, V> {
-        let mut map = BTreeMap::new();
-        let mut c = map.lower_bound_mut(Bound::Unbounded);
-        for (k, v) in self {
-            unsafe {
-                c.insert_before_unchecked(k.clone(), v.clone());
-            }
-        }
-        map
-    }
-}
 impl<K: Ord, V> FromIterator<(K, V)> for BTreeMap<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> BTreeMap<K, V> {
         let mut map = BTreeMap::new();
@@ -688,7 +673,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 enum Tree<K, V> {
     L(Leaf<K, V>),
     NL(NonLeaf<K, V>),
@@ -852,8 +837,9 @@ impl<K, V> Default for Leaf<K, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 struct Leaf<K, V>(PairVec<K, V>);
+
 impl<K, V> Leaf<K, V> {
     fn new(b: usize) -> Self {
         Self(PairVec::new(b * 2 - 1))
@@ -1063,7 +1049,7 @@ impl<K, V> Leaf<K, V> {
 /* Boxing NonLeaf saves some memory by reducing size of Tree enum */
 type NonLeaf<K, V> = Box<NonLeafInner<K, V>>;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 struct NonLeafInner<K, V> {
     v: Leaf<K, V>,
     c: TreeVec<K, V>,

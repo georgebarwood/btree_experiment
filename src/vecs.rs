@@ -298,6 +298,19 @@ impl<T> ShortVec<T> {
     }
 }
 
+impl<T> Clone for ShortVec<T> where T : Clone {
+    fn clone(&self) -> Self
+    {
+        let mut c = Self::new(self.cap as usize);
+        c.allocate(self.alloc as usize);
+        for i in 0..self.len()
+        {
+           c.push(self.ix(i).clone());
+        }  
+        c      
+    }
+}
+
 impl<T> Deref for ShortVec<T> {
     type Target = [T];
     #[inline]
@@ -739,6 +752,20 @@ impl<K, V> PairVec<K, V> {
             ix: 0,
             ixb,
         }
+    }
+}
+
+impl<K,V> Clone for PairVec<K,V> where K : Clone, V: Clone {
+    fn clone(&self) -> Self
+    {
+        let mut c = Self::new(self.capacity as usize);
+        c.allocate(self.alloc as usize);
+        for i in 0..self.len()
+        {
+           let (k,v) = self.ix(i);
+           c.push((k.clone(), v.clone()));
+        }  
+        c      
     }
 }
 
