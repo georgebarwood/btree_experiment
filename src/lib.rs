@@ -673,7 +673,7 @@ where
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 enum Tree<K, V> {
     L(Leaf<K, V>),
     NL(NonLeaf<K, V>),
@@ -837,7 +837,7 @@ impl<K, V> Default for Leaf<K, V> {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 struct Leaf<K, V>(PairVec<K, V>);
 
 impl<K, V> Leaf<K, V> {
@@ -1049,7 +1049,7 @@ impl<K, V> Leaf<K, V> {
 /* Boxing NonLeaf saves some memory by reducing size of Tree enum */
 type NonLeaf<K, V> = Box<NonLeafInner<K, V>>;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 struct NonLeafInner<K, V> {
     v: Leaf<K, V>,
     c: TreeVec<K, V>,
@@ -1341,7 +1341,7 @@ pub struct VacantEntry<'a, K, V> {
     cursor: CursorMut<'a, K, V>,
 }
 
-impl<'a, K: Debug+Ord, V> Debug for VacantEntry<'a, K, V> {
+impl<'a, K: Debug + Ord, V> Debug for VacantEntry<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("VacantEntry").field(self.key()).finish()
     }

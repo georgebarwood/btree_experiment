@@ -181,7 +181,7 @@ impl<T> Drop for ShortVec<T> {
     }
 }
 
-const ALLOC_UNIT : usize = 8; // Allocation unit.
+const ALLOC_UNIT: usize = 8; // Allocation unit.
 
 impl<T> ShortVec<T> {
     pub fn new(cap: usize) -> Self {
@@ -298,16 +298,17 @@ impl<T> ShortVec<T> {
     }
 }
 
-impl<T> Clone for ShortVec<T> where T : Clone {
-    fn clone(&self) -> Self
-    {
+impl<T> Clone for ShortVec<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
         let mut c = Self::new(self.cap as usize);
         c.allocate(self.alloc as usize);
-        for i in 0..self.len()
-        {
-           c.push(self.ix(i).clone());
-        }  
-        c      
+        for i in 0..self.len() {
+            c.push(self.ix(i).clone());
+        }
+        c
     }
 }
 
@@ -446,7 +447,9 @@ impl<K, V> PairVec<K, V> {
     #[inline]
     unsafe fn layout(amount: usize) -> (Layout, usize) {
         let layout = Layout::array::<K>(amount).unwrap_unchecked();
-        let (layout, off) = layout.extend(Layout::array::<V>(amount).unwrap_unchecked()).unwrap_unchecked();
+        let (layout, off) = layout
+            .extend(Layout::array::<V>(amount).unwrap_unchecked())
+            .unwrap_unchecked();
         (layout, off)
     }
 
@@ -755,17 +758,19 @@ impl<K, V> PairVec<K, V> {
     }
 }
 
-impl<K,V> Clone for PairVec<K,V> where K : Clone, V: Clone {
-    fn clone(&self) -> Self
-    {
+impl<K, V> Clone for PairVec<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
         let mut c = Self::new(self.capacity as usize);
         c.allocate(self.alloc as usize);
-        for i in 0..self.len()
-        {
-           let (k,v) = self.ix(i);
-           c.push((k.clone(), v.clone()));
-        }  
-        c      
+        for i in 0..self.len() {
+            let (k, v) = self.ix(i);
+            c.push((k.clone(), v.clone()));
+        }
+        c
     }
 }
 
