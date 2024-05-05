@@ -181,6 +181,8 @@ impl<T> Drop for ShortVec<T> {
     }
 }
 
+const ALLOC_UNIT : usize = 8; // Allocation unit.
+
 impl<T> ShortVec<T> {
     pub fn new(cap: usize) -> Self {
         safe_assert!(cap <= u16::MAX as usize);
@@ -207,8 +209,8 @@ impl<T> ShortVec<T> {
     }
 
     fn increase_alloc(&mut self, amount: usize) {
-        let mut na = amount + 5;
-        if na + 4 > self.cap as usize {
+        let mut na = amount + ALLOC_UNIT;
+        if na + ALLOC_UNIT > self.cap as usize {
             na = self.cap as usize;
         }
         unsafe {
@@ -430,8 +432,8 @@ impl<K, V> PairVec<K, V> {
 
     #[inline]
     unsafe fn layout(amount: usize) -> (Layout, usize) {
-        let layout = Layout::array::<K>(amount).unwrap();
-        let (layout, off) = layout.extend(Layout::array::<V>(amount).unwrap()).unwrap();
+        let layout = Layout::array::<K>(amount).unwrap_unchecked();
+        let (layout, off) = layout.extend(Layout::array::<V>(amount).unwrap_unchecked()).unwrap_unchecked();
         (layout, off)
     }
 
@@ -490,7 +492,7 @@ impl<K, V> PairVec<K, V> {
         safe_assert!(r <= 1);
         let len = self.len() - at;
         let mut result = Self::new(self.capacity as usize);
-        result.allocate(len + r * 5);
+        result.allocate(len + r * ALLOC_UNIT);
         unsafe {
             let (kf, vf) = self.ixmp(at);
             let (kt, vt) = result.ixmp(0);
@@ -499,7 +501,7 @@ impl<K, V> PairVec<K, V> {
         }
         result.len = len as u16;
         self.len -= len as u16;
-        self.allocate(self.len() + (1 - r) * 5);
+        self.allocate(self.len() + (1 - r) * ALLOC_UNIT);
         result
     }
 
@@ -507,7 +509,7 @@ impl<K, V> PairVec<K, V> {
         safe_assert!(self.len < self.capacity);
         safe_assert!(at <= self.len());
         if self.alloc == self.len {
-            self.allocate(self.len() + 5);
+            self.allocate(self.len() + ALLOC_UNIT);
         }
         unsafe {
             let n = self.len() - at;
@@ -540,7 +542,7 @@ impl<K, V> PairVec<K, V> {
     pub fn push(&mut self, (key, value): (K, V)) {
         safe_assert!(self.len < self.capacity);
         if self.alloc == self.len {
-            self.allocate(self.len() + 5);
+            self.allocate(self.len() + ALLOC_UNIT);
         }
         unsafe {
             let (kp, vp) = self.ixmp(self.len());
@@ -646,6 +648,16 @@ impl<K, V> PairVec<K, V> {
         unsafe {
             let kp = self.p.as_ptr().cast::<K>().add(i);
             &*kp
+        }
+    }
+
+    #[inline]
+    pub fn ixv(&self, i: usize) -> &V {
+        safe_assert!(i < self.len());
+        unsafe {
+            let (_, off) = Self::layout(self.alloc as usize);
+            let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
+            &*vp
         }
     }
 

@@ -1,20 +1,18 @@
 use crate::*;
 
 const REP: usize = if cfg!(miri) { 2 } else { 1000 };
-const N: usize = if cfg!(miri) { 100 } else { 10000 };
+const N: usize = if cfg!(miri) { 100 } else { 20000 };
+const ADJ: usize = 50;
 
 #[test]
 fn exp_mem_test() {
     let n = N;
     let mut map = BTreeMap::new();
     for i in 0..n {
-        map.insert(i * 2, i * 2);
-    }
-    for i in 0..n {
-        map.insert(i * 2 + 1, i * 2 + 1);
+        map.insert(i as u16, 1u8);
     }
     crate::print_memory();
-    println!("Required memory: {} bytes", n * 32);
+    println!("Required memory: {} bytes", n * 3);
 }
 
 #[test]
@@ -22,15 +20,11 @@ fn std_mem_test() {
     let n = N;
     let mut map = std::collections::BTreeMap::new();
     for i in 0..n {
-        map.insert(i * 2, i * 2);
-    }
-    for i in 0..n {
-        map.insert(i * 2 + 1, i * 2 + 1);
+        map.insert(i as u16, 1u8);
     }
     crate::print_memory();
+    println!("Required memory: {} bytes", n * 3);
 }
-
-const ADJ: usize = 50;
 
 #[test]
 fn exp_get_test() {
@@ -38,14 +32,14 @@ fn exp_get_test() {
     let mut c = m.lower_bound_mut(Bound::Unbounded);
     let n = N / ADJ;
     for i in 0..n {
-        let v = (i, i, i, i);
+        let v = i;
         c.insert_before(i, v).unwrap();
     }
     assert!(m.len() == n);
     print_memory();
     for _rep in 0..REP * ADJ {
         for i in 0..n {
-            let v = (i, i, i, i);
+            let v = i;
             assert!(m[&i] == v);
         }
     }
@@ -57,14 +51,14 @@ fn std_get_test() {
     let mut c = m.lower_bound_mut(Bound::Unbounded);
     let n = N / ADJ;
     for i in 0..n {
-        let v = (i, i, i, i);
+        let v = i;
         c.insert_before(i, v).unwrap();
     }
     assert!(m.len() == n);
     print_memory();
     for _rep in 0..REP * ADJ {
         for i in 0..n {
-            let v = (i, i, i, i);
+            let v = i;
             assert!(m[&i] == v);
         }
     }

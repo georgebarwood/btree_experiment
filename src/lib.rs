@@ -45,7 +45,7 @@ impl<K, V> Default for BTreeMap<K, V> {
         Self::new()
     }
 }
-const DB: usize = 48;
+const DB: usize = 64;
 
 impl<K, V> BTreeMap<K, V> {
     #[cfg(test)]
@@ -223,7 +223,7 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        self.get_key_value(key).map(|(_k, v)| v)
+        self.tree.get(key)
     }
 
     /// Get a mutable reference to the value corresponding to the key.
@@ -765,6 +765,17 @@ impl<K, V> Tree<K, V> {
         }
     }
 
+    fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match self {
+            Tree::L(leaf) => leaf.get(key),
+            Tree::NL(nonleaf) => nonleaf.get(key),
+        }
+    }
+
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q> + Ord,
@@ -977,6 +988,14 @@ impl<K, V> Leaf<K, V> {
         Some(self.0.ix(self.look(key).ok()?))
     }
 
+    fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        Some(self.0.ixv(self.look(key).ok()?))
+    }
+
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q> + Ord,
@@ -1169,6 +1188,17 @@ impl<K, V> NonLeafInner<K, V> {
         match self.v.look(key) {
             Ok(i) => Some(self.v.0.ix(i)),
             Err(i) => self.c.ix(i).get_key_value(key),
+        }
+    }
+
+    fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        match self.v.look(key) {
+            Ok(i) => Some(self.v.0.ixv(i)),
+            Err(i) => self.c.ix(i).get(key),
         }
     }
 
