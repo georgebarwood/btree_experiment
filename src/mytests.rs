@@ -253,6 +253,11 @@ fn std_cursor_insert_test() {
             let (k, v) = c.next().unwrap();
             assert_eq!((*k, *v), (i, i));
         }
+        let mut c = m.upper_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            let (k, v) = c.prev().unwrap();
+            assert_eq!((*k, *v), (n - i - 1, n - i - 1));
+        }
     }
 }
 

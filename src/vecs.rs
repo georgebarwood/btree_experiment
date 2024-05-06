@@ -10,6 +10,13 @@ use std::{
     ptr::NonNull,
 };
 
+unsafe fn clone_to_ptr<T: Clone>(src: &[T], mut p: *mut T) {
+    for x in src {
+        p.write(x.clone());
+        p = p.add(1);
+    }
+}
+
 /// Basic vec, does not have own capacity or length, just a pointer to memory.
 /// Kind-of cribbed from <https://doc.rust-lang.org/nomicon/vec/vec-final.html>.
 struct BasicVec<T> {
@@ -157,12 +164,13 @@ pub(crate) struct ShortVec<T> {
     len: u16,   // Current length.
     alloc: u16, // Currently allocated.
     cap: u16,   // Maximum capacity ( never allocate more than this ).
+    alloc_unit: u8,
     v: BasicVec<T>,
 }
 
 impl<T> Default for ShortVec<T> {
     fn default() -> Self {
-        Self::new(u16::MAX as usize)
+        Self::new(64, 8)
     }
 }
 
@@ -181,16 +189,14 @@ impl<T> Drop for ShortVec<T> {
     }
 }
 
-const ALLOC_UNIT: usize = 8; // Allocation unit.
-
 impl<T> ShortVec<T> {
-    pub fn new(cap: usize) -> Self {
-        safe_assert!(cap <= u16::MAX as usize);
+    pub fn new(cap: u16, alloc_unit: u8) -> Self {
         let v = BasicVec::new();
         Self {
             len: 0,
             alloc: 0,
-            cap: cap as u16,
+            cap,
+            alloc_unit,
             v,
         }
     }
@@ -209,8 +215,8 @@ impl<T> ShortVec<T> {
     }
 
     fn increase_alloc(&mut self, amount: usize) {
-        let mut na = amount + ALLOC_UNIT;
-        if na + ALLOC_UNIT > self.cap as usize {
+        let mut na = amount + self.alloc_unit as usize;
+        if na + self.alloc_unit as usize > self.cap as usize {
             na = self.cap as usize;
         }
         unsafe {
@@ -272,7 +278,7 @@ impl<T> ShortVec<T> {
     pub fn split_off(&mut self, at: usize) -> Self {
         safe_assert!(at < self.len());
         let len = self.len() - at;
-        let mut result = Self::new(self.cap as usize);
+        let mut result = Self::new(self.cap, self.alloc_unit);
         result.allocate(len);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
@@ -303,10 +309,13 @@ where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        let mut c = Self::new(self.cap as usize);
+        let mut c = Self::new(self.cap, self.alloc_unit);
         c.allocate(self.alloc as usize);
-        for i in 0..self.len() {
-            c.push(self.ix(i).clone());
+        if self.len > 0 {
+            c.len = self.len;
+            unsafe {
+                clone_to_ptr(self.deref(), c.v.ix(0));
+            }
         }
         c
     }
@@ -392,15 +401,16 @@ use std::marker::PhantomData;
 /// Vector of (key,value) pairs, keys stored separately from values for cache efficient search.
 pub struct PairVec<K, V> {
     p: NonNull<u8>,
-    len: u16,      // Current length
-    alloc: u16,    // Allocated
-    capacity: u16, // Maximum capacity
+    len: u16,       // Current length
+    alloc: u16,     // Allocated
+    capacity: u16,  // Maximum capacity
+    alloc_unit: u8, // Allocation unit.
     _pd: PhantomData<(K, V)>,
 }
 
 impl<K, V> Default for PairVec<K, V> {
     fn default() -> Self {
-        Self::new(0)
+        Self::new(0, 1)
     }
 }
 
@@ -417,13 +427,13 @@ unsafe impl<K: Send, V: Send> Send for PairVec<K, V> {}
 unsafe impl<K: Sync, V: Sync> Sync for PairVec<K, V> {}
 
 impl<K, V> PairVec<K, V> {
-    pub fn new(capacity: usize) -> Self {
-        let capacity = capacity as u16;
+    pub fn new(capacity: u16, alloc_unit: u8) -> Self {
         Self {
             p: NonNull::dangling(),
             len: 0,
             alloc: 0,
             capacity,
+            alloc_unit,
             _pd: PhantomData,
         }
     }
@@ -442,6 +452,10 @@ impl<K, V> PairVec<K, V> {
 
     pub fn cap(&self) -> usize {
         self.capacity as usize
+    }
+
+    pub fn au(&self) -> u8 {
+        self.alloc_unit
     }
 
     #[inline]
@@ -507,8 +521,8 @@ impl<K, V> PairVec<K, V> {
         safe_assert!(at <= self.len());
         safe_assert!(r <= 1);
         let len = self.len() - at;
-        let mut result = Self::new(self.capacity as usize);
-        result.allocate(len + r * ALLOC_UNIT);
+        let mut result = Self::new(self.capacity, self.alloc_unit);
+        result.allocate(len + r * self.alloc_unit as usize);
         unsafe {
             let (kf, vf) = self.ixmp(at);
             let (kt, vt) = result.ixmp(0);
@@ -517,7 +531,7 @@ impl<K, V> PairVec<K, V> {
         }
         result.len = len as u16;
         self.len -= len as u16;
-        self.allocate(self.len() + (1 - r) * ALLOC_UNIT);
+        self.allocate(self.len() + (1 - r) * self.alloc_unit as usize);
         result
     }
 
@@ -525,7 +539,7 @@ impl<K, V> PairVec<K, V> {
         safe_assert!(self.len < self.capacity);
         safe_assert!(at <= self.len());
         if self.alloc == self.len {
-            self.allocate(self.len() + ALLOC_UNIT);
+            self.allocate(self.len() + self.alloc_unit as usize);
         }
         unsafe {
             let n = self.len() - at;
@@ -558,7 +572,7 @@ impl<K, V> PairVec<K, V> {
     pub fn push(&mut self, (key, value): (K, V)) {
         safe_assert!(self.len < self.capacity);
         if self.alloc == self.len {
-            self.allocate(self.len() + ALLOC_UNIT);
+            self.allocate(self.len() + self.alloc_unit as usize);
         }
         unsafe {
             let (kp, vp) = self.ixmp(self.len());
@@ -764,11 +778,18 @@ where
     V: Clone,
 {
     fn clone(&self) -> Self {
-        let mut c = Self::new(self.capacity as usize);
+        let mut c = Self::new(self.capacity, self.alloc_unit);
         c.allocate(self.alloc as usize);
-        for i in 0..self.len() {
-            let (k, v) = self.ix(i);
-            c.push((k.clone(), v.clone()));
+        if self.len > 0 {
+            c.len = self.len;
+            let (k, v) = self.ix(0);
+            unsafe {
+                let keys = std::slice::from_raw_parts(k, self.len());
+                let vals = std::slice::from_raw_parts(v, self.len());
+                let (ck, cv) = c.ixbm(0);
+                clone_to_ptr(keys, ck);
+                clone_to_ptr(vals, cv);
+            }
         }
         c
     }
@@ -901,7 +922,7 @@ impl<K, V> Drop for IntoIterPairVec<K, V> {
 
 #[test]
 fn test_kv() {
-    let mut v = PairVec::new(4);
+    let mut v = PairVec::new(4, 1);
     v.push((2, 2));
     v.insert(0, (1, 1));
     println!("ixm(0) = {:?}", v.ixm(0));

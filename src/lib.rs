@@ -46,7 +46,9 @@ impl<K, V> Default for BTreeMap<K, V> {
         Self::new()
     }
 }
-const DB: usize = 64;
+
+const DEFAULT_BRANCH: u16 = 64;
+const DEFAULT_ALLOC_UNIT: u8 = 8;
 
 impl<K, V> BTreeMap<K, V> {
     #[cfg(test)]
@@ -55,25 +57,33 @@ impl<K, V> BTreeMap<K, V> {
     /// Returns a new, empty map.
     #[must_use]
     pub fn new() -> Self {
-        Self::with_branch(DB)
+        Self::with_branch_and_unit(DEFAULT_BRANCH, DEFAULT_ALLOC_UNIT)
     }
 
-    /// Returns a new, empty map with specified branch
-    /// which must be at least 6, a good value may be 20.
+    /// Returns a new, empty map with specified branch and allocation unit.
+    /// branch must be at least 6 and not more than 512. A good value might be 32 or 64.
+    /// allocation_unit must be at least 1.
+    /// allocation_unit specifies the amount by which the
+    /// allocation for the underlying vecs are increased when the vec is full
+    /// and needs to increase.
+    /// A smaller value will be slower due to extra re-allocations but may use less memory.
+    /// A good value might be 4 or 8.
     #[must_use]
-    pub fn with_branch(b: usize) -> Self {
-        assert!(b >= 6 && 2 * b < u16::MAX as usize);
+    pub fn with_branch_and_unit(branch: u16, allocation_unit: u8) -> Self {
+        assert!(branch >= 6);
+        assert!(branch <= 512);
+        assert!(allocation_unit > 0);
         Self {
             len: 0,
-            tree: Tree::new(b),
+            tree: Tree::new(branch, allocation_unit),
         }
     }
 
     /// Clear the map.
     pub fn clear(&mut self) {
         self.len = 0;
-        let b = self.tree.b();
-        self.tree = Tree::new(b);
+        let (b, au) = self.tree.bau();
+        self.tree = Tree::new(b, au);
     }
 
     /// Get number of key-value pairs in the map.
@@ -173,7 +183,7 @@ impl<K, V> BTreeMap<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        self.get_key_value(key).is_some()
+        self.get(key).is_some()
     }
 
     /// Remove key-value pair from map, returning just the value.
@@ -265,7 +275,8 @@ impl<K, V> BTreeMap<K, V> {
     where
         K: Ord,
     {
-        let rep = Tree::new(other.tree.b());
+        let (b, au) = other.tree.bau();
+        let rep = Tree::new(b, au);
         let tree = mem::replace(&mut other.tree, rep);
         let temp = BTreeMap {
             len: other.len,
@@ -680,18 +691,18 @@ enum Tree<K, V> {
 }
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Self::new(DB)
+        Self::new(DEFAULT_BRANCH, DEFAULT_ALLOC_UNIT)
     }
 }
 impl<K, V> Tree<K, V> {
-    fn new(b: usize) -> Self {
-        Tree::L(Leaf::new(b))
+    fn new(b: u16, au: u8) -> Self {
+        Tree::L(Leaf::new(b, au))
     }
 
-    fn b(&self) -> usize {
+    fn bau(&self) -> (u16, u8) {
         match self {
-            Tree::L(leaf) => leaf.b(),
-            Tree::NL(nonleaf) => nonleaf.v.b(),
+            Tree::L(leaf) => leaf.bau(),
+            Tree::NL(nonleaf) => nonleaf.v.bau(),
         }
     }
 
@@ -706,8 +717,8 @@ impl<K, V> Tree<K, V> {
     }
 
     fn new_root(&mut self, (med, right): Split<K, V>) {
-        let b = self.b();
-        let mut nl = NonLeafInner::new(b);
+        let (b, au) = self.bau();
+        let mut nl = NonLeafInner::new(b, au);
         nl.v.0.push(med);
         nl.c.push(mem::take(self));
         nl.c.push(right);
@@ -833,7 +844,7 @@ impl<K, V> Tree<K, V> {
 
 impl<K, V> Default for Leaf<K, V> {
     fn default() -> Self {
-        Self::new(DB)
+        Self::new(DEFAULT_BRANCH, DEFAULT_ALLOC_UNIT)
     }
 }
 
@@ -841,8 +852,8 @@ impl<K, V> Default for Leaf<K, V> {
 struct Leaf<K, V>(PairVec<K, V>);
 
 impl<K, V> Leaf<K, V> {
-    fn new(b: usize) -> Self {
-        Self(PairVec::new(b * 2 - 1))
+    fn new(b: u16, au: u8) -> Self {
+        Self(PairVec::new(b * 2 - 1, au))
     }
 
     fn full(&self) -> bool {
@@ -851,6 +862,10 @@ impl<K, V> Leaf<K, V> {
 
     fn b(&self) -> usize {
         self.0.cap() / 2 + 1
+    }
+
+    fn bau(&self) -> (u16, u8) {
+        (self.b() as u16, self.0.au())
     }
 
     fn into_iter(mut self) -> IntoIterPairVec<K, V> {
@@ -1055,10 +1070,10 @@ struct NonLeafInner<K, V> {
     c: TreeVec<K, V>,
 }
 impl<K, V> NonLeafInner<K, V> {
-    fn new(b: usize) -> Box<Self> {
+    fn new(b: u16, au: u8) -> Box<Self> {
         Box::new(Self {
-            v: Leaf::new(b),
-            c: TreeVec::new(b * 2),
+            v: Leaf::new(b, au),
+            c: TreeVec::new(b * 2, au),
         })
     }
 
