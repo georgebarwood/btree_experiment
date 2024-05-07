@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-criterion_group!(benches, bench_get, bench_clone);
+criterion_group!(benches, bench_get, bench_clone, bench_into_iter);
 criterion_main!(benches);
 
 fn bench_clone(c: &mut Criterion) {
@@ -40,6 +40,33 @@ fn bench_get(c: &mut Criterion) {
         });
         group.bench_function(BenchmarkId::new("Std", n), |b| {
             b.iter(|| std_map.get(&(n - 100)))
+        });
+    }
+    group.finish();
+}
+
+fn bench_into_iter(c: &mut Criterion) {
+    let mut group = c.benchmark_group("RefIter");
+    for n in [100, 1000, 10000, 100000].iter() {
+        let mut exp_map = btree_experiment::BTreeMap::new();
+        for i in 0..*n {
+            exp_map.insert(i, i);
+        }
+
+        let mut std_map = std::collections::BTreeMap::new();
+        for i in 0..*n {
+            std_map.insert(i, i);
+        }
+
+        group.bench_function(BenchmarkId::new("Exp", n), |b| {
+            b.iter(|| 
+              for (k,v) in &exp_map { assert!(k==v); }
+            )
+        });
+        group.bench_function(BenchmarkId::new("Std", n), |b| {
+            b.iter(|| 
+              for (k,v) in &std_map { assert!(k==v); }
+            )
         });
     }
     group.finish();
