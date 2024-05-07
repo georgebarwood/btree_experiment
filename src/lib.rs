@@ -761,6 +761,7 @@ impl<K, V> Tree<K, V> {
         }
     }
 
+    #[inline]
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + Ord,
@@ -873,6 +874,7 @@ impl<K, V> Leaf<K, V> {
         v.into_iter()
     }
 
+    #[inline]
     fn look_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
@@ -881,6 +883,7 @@ impl<K, V> Leaf<K, V> {
         self.0.search_to(n, |x| x.borrow().cmp(key))
     }
 
+    #[inline]
     fn look<Q>(&self, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
@@ -989,6 +992,7 @@ impl<K, V> Leaf<K, V> {
         Some(self.0.ix(self.look(key).ok()?))
     }
 
+    #[inline]
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + Ord,
@@ -1192,6 +1196,7 @@ impl<K, V> NonLeafInner<K, V> {
         }
     }
 
+    #[inline]
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + Ord,

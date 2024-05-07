@@ -10,13 +10,6 @@ use std::{
     ptr::NonNull,
 };
 
-unsafe fn clone_to_ptr<T: Clone>(src: &[T], mut p: *mut T) {
-    for x in src {
-        p.write(x.clone());
-        p = p.add(1);
-    }
-}
-
 /// Basic vec, does not have own capacity or length, just a pointer to memory.
 /// Kind-of cribbed from <https://doc.rust-lang.org/nomicon/vec/vec-final.html>.
 struct BasicVec<T> {
@@ -311,10 +304,21 @@ where
     fn clone(&self) -> Self {
         let mut c = Self::new(self.cap, self.alloc_unit);
         c.allocate(self.alloc as usize);
-        if self.len > 0 {
-            c.len = self.len;
+        let mut n = self.len;
+        if n > 0 {
             unsafe {
-                clone_to_ptr(self.deref(), c.v.ix(0));
+                let mut src = self.v.p.as_ptr();
+                let mut dest = c.v.p.as_ptr();
+                loop {
+                    dest.write((*src).clone());
+                    c.len += 1;
+                    n -= 1;
+                    if n == 0 {
+                        break;
+                    }
+                    src = src.add(1);
+                    dest = dest.add(1);
+                }
             }
         }
         c
@@ -622,25 +626,8 @@ impl<K, V> PairVec<K, V> {
     where
         F: FnMut(&K, &mut V) -> bool,
     {
-        unsafe {
-            let mut i = 0;
-            let mut r = 0;
-            while i < self.len() {
-                let (k, v) = self.ixm(i);
-                if f(k, v) {
-                    if r != i {
-                        let kv = self.get(i);
-                        self.set(r, kv);
-                    }
-                    r += 1;
-                } else {
-                    self.get(i);
-                }
-                i += 1;
-            }
-            self.len -= (i - r) as u16;
-            self.trim();
-        }
+        // struct is needed to fix invariants if f panics.
+        PairRetainer::new(self, &mut f).go();
     }
 
     #[inline]
@@ -772,6 +759,66 @@ impl<K, V> PairVec<K, V> {
     }
 }
 
+struct PairRetainer<'a, K, V, F>
+where
+    F: FnMut(&K, &mut V) -> bool,
+{
+    pv: &'a mut PairVec<K, V>,
+    f: &'a mut F,
+    i: usize,
+    r: usize,
+}
+
+impl<'a, K, V, F> PairRetainer<'a, K, V, F>
+where
+    F: FnMut(&K, &mut V) -> bool,
+{
+    fn new(pv: &'a mut PairVec<K, V>, f: &'a mut F) -> Self {
+        Self { pv, f, i: 0, r: 0 }
+    }
+
+    fn go(&mut self) {
+        unsafe {
+            let pv = &mut self.pv;
+            while self.i < pv.len() {
+                let (k, v) = pv.ixm(self.i);
+                if (self.f)(k, v) {
+                    if self.r != self.i {
+                        let kv = pv.get(self.i);
+                        pv.set(self.r, kv);
+                    }
+                    self.r += 1;
+                } else {
+                    pv.get(self.i);
+                }
+                self.i += 1;
+            }
+        }
+    }
+}
+
+impl<'a, K, V, F> Drop for PairRetainer<'a, K, V, F>
+where
+    F: FnMut(&K, &mut V) -> bool,
+{
+    fn drop(&mut self) {
+        unsafe {
+            let pv = &mut self.pv;
+            while self.i < pv.len() {
+                if self.r != self.i {
+                    let kv = pv.get(self.i);
+                    pv.set(self.r, kv);
+                }
+                self.r += 1;
+                self.i += 1;
+            }
+
+            pv.len -= (self.i - self.r) as u16;
+            pv.trim();
+        }
+    }
+}
+
 impl<K, V> Clone for PairVec<K, V>
 where
     K: Clone,
@@ -780,15 +827,26 @@ where
     fn clone(&self) -> Self {
         let mut c = Self::new(self.capacity, self.alloc_unit);
         c.allocate(self.alloc as usize);
-        if self.len > 0 {
-            c.len = self.len;
-            let (k, v) = self.ix(0);
+        let mut n = self.len;
+        if n > 0 {
             unsafe {
-                let keys = std::slice::from_raw_parts(k, self.len());
-                let vals = std::slice::from_raw_parts(v, self.len());
-                let (ck, cv) = c.ixbm(0);
-                clone_to_ptr(keys, ck);
-                clone_to_ptr(vals, cv);
+                let (mut sk, mut sv) = self.ixp(0);
+                let (mut dk, mut dv) = c.ixmp(0);
+                loop {
+                    let k = (*sk).clone();
+                    let v = (*sv).clone();
+                    dk.write(k);
+                    dv.write(v);
+                    c.len += 1;
+                    n -= 1;
+                    if n == 0 {
+                        break;
+                    }
+                    sk = sk.add(1);
+                    sv = sv.add(1);
+                    dk = dk.add(1);
+                    dv = dv.add(1);
+                }
             }
         }
         c

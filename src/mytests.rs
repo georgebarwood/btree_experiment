@@ -1,8 +1,7 @@
 use crate::*;
 
 const REP: usize = if cfg!(miri) { 2 } else { 1000 };
-const N: usize = if cfg!(miri) { 100 } else { 20000 };
-const ADJ: usize = 50;
+const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
 #[test]
 fn exp_mem_test() {
@@ -30,14 +29,14 @@ fn std_mem_test() {
 fn exp_get_test() {
     let mut m = /*std::collections::*/ BTreeMap::new();
     let mut c = m.lower_bound_mut(Bound::Unbounded);
-    let n = N / ADJ;
+    let n = N;
     for i in 0..n {
         let v = i;
         c.insert_before(i, v).unwrap();
     }
     assert!(m.len() == n);
     print_memory();
-    for _rep in 0..REP * ADJ {
+    for _rep in 0..REP * 10 {
         for i in 0..n {
             let v = i;
             assert!(m[&i] == v);
@@ -49,14 +48,14 @@ fn exp_get_test() {
 fn std_get_test() {
     let mut m = std::collections::BTreeMap::new();
     let mut c = m.lower_bound_mut(Bound::Unbounded);
-    let n = N / ADJ;
+    let n = N;
     for i in 0..n {
         let v = i;
         c.insert_before(i, v).unwrap();
     }
     assert!(m.len() == n);
     print_memory();
-    for _rep in 0..REP * ADJ {
+    for _rep in 0..REP * 10 {
         for i in 0..n {
             let v = i;
             assert!(m[&i] == v);
