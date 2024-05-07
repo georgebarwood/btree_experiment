@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-criterion_group!(benches, bench_get, bench_clone, bench_into_iter);
+criterion_group!(benches, bench_get, bench_clone, bench_ref_iter);
 criterion_main!(benches);
 
 fn bench_clone(c: &mut Criterion) {
@@ -45,7 +45,7 @@ fn bench_get(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_into_iter(c: &mut Criterion) {
+fn bench_ref_iter(c: &mut Criterion) {
     let mut group = c.benchmark_group("RefIter");
     for n in [100, 1000, 10000, 100000].iter() {
         let mut exp_map = btree_experiment::BTreeMap::new();
