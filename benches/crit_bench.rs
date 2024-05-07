@@ -1,9 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-criterion_group!(benches, bench_get);
+criterion_group!(benches, bench_get, bench_clone);
 criterion_main!(benches);
 
-/*
 fn bench_clone(c: &mut Criterion) {
     let mut group = c.benchmark_group("Clone");
     for n in [1000, 10000].iter() {
@@ -22,7 +21,6 @@ fn bench_clone(c: &mut Criterion) {
     }
     group.finish();
 }
-*/
 
 fn bench_get(c: &mut Criterion) {
     let mut group = c.benchmark_group("Get");
