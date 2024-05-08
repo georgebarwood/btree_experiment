@@ -34,7 +34,7 @@
 /// [`CursorMut`] is implemented using [`CursorMutKey`] which has a stack of raw pointer/index pairs
 /// to keep track of non-leaf positions.
 ///
-/// Roughly speaking, unsafe code is limited to the implementation of [`CursorMut`] and [`CursorMutKey`].
+/// Roughly speaking, unsafe code is limited to the vecs module and the implementation of [`CursorMut`] and [`CursorMutKey`].
 
 #[derive(Clone)]
 pub struct BTreeMap<K, V> {
@@ -64,7 +64,7 @@ impl<K, V> BTreeMap<K, V> {
     /// branch must be at least 6 and not more than 512. A good value might be 32 or 64.
     /// allocation_unit must be at least 1.
     /// allocation_unit specifies the amount by which the
-    /// allocation for the underlying vecs are increased when the vec is full
+    /// allocation for the underlying vecs is increased when the vec is full
     /// and needs to increase.
     /// A smaller value will be slower due to extra re-allocations but may use less memory.
     /// A good value might be 4 or 8.
@@ -224,8 +224,13 @@ impl<K, V> BTreeMap<K, V> {
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&K, &mut V) -> bool,
+        K: Ord
     {
-        self.len -= self.tree.retain(&mut f);
+        let mut c = self.lower_bound_mut( Bound::Unbounded );
+        while let Some((k,v)) = c.next()
+        {
+            if !f(k, v) { c.remove_prev(); }
+        }
     }
 
     /// Get reference to the value corresponding to the key.
@@ -798,16 +803,6 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn retain<F>(&mut self, f: &mut F) -> usize
-    where
-        F: FnMut(&K, &mut V) -> bool,
-    {
-        match self {
-            Tree::L(leaf) => leaf.retain(f),
-            Tree::NL(nonleaf) => nonleaf.retain(f),
-        }
-    }
-
     fn iter_mut(&mut self) -> RangeMut<'_, K, V> {
         let mut x = RangeMut::new();
         x.push_tree(self, true);
@@ -1016,21 +1011,6 @@ impl<K, V> Leaf<K, V> {
         Some(self.0.remove(0))
     }
 
-    fn retain<F>(&mut self, f: &mut F) -> usize
-    where
-        F: FnMut(&K, &mut V) -> bool,
-    {
-        let mut removed = 0;
-        self.0.retain(|k, v| {
-            let ok = f(k, v);
-            if !ok {
-                removed += 1;
-            };
-            ok
-        });
-        removed
-    }
-
     fn get_xy<T, R>(&self, range: &R) -> (usize, usize)
     where
         T: Ord + ?Sized,
@@ -1155,34 +1135,6 @@ impl<K, V> NonLeafInner<K, V> {
             Ok(i) => Some(self.remove_at(i).0),
             Err(i) => self.c.ixm(i).remove(key),
         }
-    }
-
-    fn retain<F>(&mut self, f: &mut F) -> usize
-    where
-        F: FnMut(&K, &mut V) -> bool,
-    {
-        let mut removed = 0;
-        let mut i = 0;
-        while i < self.v.0.len() {
-            removed += self.c.ixm(i).retain(f);
-            let e = self.v.0.ixm(i);
-            if f(e.0, e.1) {
-                i += 1;
-            } else {
-                removed += 1;
-                if let Some(x) = self.c.ixm(i).pop_last() {
-                    let (kp, vp) = self.v.0.ixbm(i);
-                    *kp = x.0;
-                    *vp = x.1;
-                    i += 1;
-                } else {
-                    self.c.remove(i);
-                    self.v.0.remove(i);
-                }
-            }
-        }
-        removed += self.c.ixm(i).retain(f);
-        removed
     }
 
     fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>

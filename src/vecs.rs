@@ -622,27 +622,6 @@ impl<K, V> PairVec<K, V> {
         Err(i)
     }
 
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&K, &mut V) -> bool,
-    {
-        // struct is needed to fix invariants if f panics.
-        PairRetainer::new(self, &mut f).go();
-    }
-
-    #[inline]
-    unsafe fn get(&mut self, i: usize) -> (K, V) {
-        let (kp, vp) = self.ixmp(i);
-        (kp.read(), vp.read())
-    }
-
-    #[inline]
-    unsafe fn set(&mut self, i: usize, (k, v): (K, V)) {
-        let (kp, vp) = self.ixmp(i);
-        kp.write(k);
-        vp.write(v);
-    }
-
     #[inline]
     unsafe fn ixmp(&mut self, i: usize) -> (*mut K, *mut V) {
         let (_, off) = Self::layout(self.alloc as usize);
@@ -697,15 +676,6 @@ impl<K, V> PairVec<K, V> {
     }
 
     #[inline]
-    pub fn ixm(&mut self, i: usize) -> (&K, &mut V) {
-        safe_assert!(i < self.len());
-        unsafe {
-            let (kp, vp) = self.ixmp(i);
-            (&*kp, &mut *vp)
-        }
-    }
-
-    #[inline]
     pub fn ixbm(&mut self, i: usize) -> (&mut K, &mut V) {
         safe_assert!(i < self.len());
         unsafe {
@@ -755,66 +725,6 @@ impl<K, V> PairVec<K, V> {
             v: self,
             ix: 0,
             ixb,
-        }
-    }
-}
-
-struct PairRetainer<'a, K, V, F>
-where
-    F: FnMut(&K, &mut V) -> bool,
-{
-    pv: &'a mut PairVec<K, V>,
-    f: &'a mut F,
-    i: usize,
-    r: usize,
-}
-
-impl<'a, K, V, F> PairRetainer<'a, K, V, F>
-where
-    F: FnMut(&K, &mut V) -> bool,
-{
-    fn new(pv: &'a mut PairVec<K, V>, f: &'a mut F) -> Self {
-        Self { pv, f, i: 0, r: 0 }
-    }
-
-    fn go(&mut self) {
-        unsafe {
-            let pv = &mut self.pv;
-            while self.i < pv.len() {
-                let (k, v) = pv.ixm(self.i);
-                if (self.f)(k, v) {
-                    if self.r != self.i {
-                        let kv = pv.get(self.i);
-                        pv.set(self.r, kv);
-                    }
-                    self.r += 1;
-                } else {
-                    pv.get(self.i);
-                }
-                self.i += 1;
-            }
-        }
-    }
-}
-
-impl<'a, K, V, F> Drop for PairRetainer<'a, K, V, F>
-where
-    F: FnMut(&K, &mut V) -> bool,
-{
-    fn drop(&mut self) {
-        unsafe {
-            let pv = &mut self.pv;
-            while self.i < pv.len() {
-                if self.r != self.i {
-                    let kv = pv.get(self.i);
-                    pv.set(self.r, kv);
-                }
-                self.r += 1;
-                self.i += 1;
-            }
-
-            pv.len -= (self.i - self.r) as u16;
-            pv.trim();
         }
     }
 }
@@ -975,26 +885,5 @@ impl<K, V> Drop for IntoIterPairVec<K, V> {
             self.next();
         }
         self.v.len = 0;
-    }
-}
-
-#[test]
-fn test_kv() {
-    let mut v = PairVec::new(4, 1);
-    v.push((2, 2));
-    v.insert(0, (1, 1));
-    println!("ixm(0) = {:?}", v.ixm(0));
-    println!("ixm(1) = {:?}", v.ixm(1));
-
-    for kv in v.iter_mut() {
-        println!("kv={:?}", kv);
-    }
-
-    //println!("pop = {:?}", v.pop().unwrap());
-    //println!("pop = {:?}", v.pop().unwrap());
-    println!("remove(0)= {:?}", v.remove(0));
-
-    for kv in v.into_iter() {
-        println!("kv={:?}", kv);
     }
 }
