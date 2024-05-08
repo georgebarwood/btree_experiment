@@ -8,6 +8,7 @@ use std::{
     ops::{Deref, DerefMut},
     ptr,
     ptr::NonNull,
+    borrow::Borrow
 };
 
 /// Basic vec, does not have own capacity or length, just a pointer to memory.
@@ -597,23 +598,32 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    #[inline]
-    pub fn search<F>(&self, f: F) -> Result<usize, usize>
+    pub fn search<Q>(&self, key: &Q) -> Result<usize, usize>
     where
-        F: FnMut(&K) -> Ordering,
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
     {
-        self.search_to(self.len(), f)
+        let (mut i, mut j) = (0, self.len());
+        while i < j {
+            let m = (i + j) / 2;
+            match self.ixk(m).borrow().cmp(key) {
+                Ordering::Equal => return Ok(m),
+                Ordering::Less => i = m + 1,
+                Ordering::Greater => j = m,
+            }
+        }
+        Err(i)
     }
 
-    pub fn search_to<F>(&self, n: usize, mut f: F) -> Result<usize, usize>
+    pub fn search_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
     where
-        F: FnMut(&K) -> Ordering,
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
     {
-        safe_assert!(n <= self.len());
         let (mut i, mut j) = (0, n);
         while i < j {
             let m = (i + j) / 2;
-            match f(self.ixk(m)) {
+            match self.ixk(m).borrow().cmp(key) {
                 Ordering::Equal => return Ok(m),
                 Ordering::Less => i = m + 1,
                 Ordering::Greater => j = m,

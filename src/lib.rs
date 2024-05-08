@@ -657,7 +657,7 @@ use std::{
 type StkVec<T> = arrayvec::ArrayVec<T, 15>;
 
 mod vecs;
-use crate::vecs::*;
+use vecs::*;
 
 type TreeVec<K, V> = ShortVec<Tree<K, V>>;
 
@@ -869,13 +869,13 @@ impl<K, V> Leaf<K, V> {
         v.into_iter()
     }
 
-    #[inline]
+#[inline]
     fn look_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        self.0.search_to(n, |x| x.borrow().cmp(key))
+        self.0.search_to(n, key)
     }
 
     #[inline]
@@ -884,7 +884,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        self.0.search(|x| x.borrow().cmp(key))
+        self.0.search(key)
     }
 
     fn skip<Q>(&self, key: &Q) -> usize
@@ -892,7 +892,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
+        match self.0.search(key) {
             Ok(i) | Err(i) => i,
         }
     }
@@ -902,7 +902,7 @@ impl<K, V> Leaf<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self.look(key) {
+        match self.0.search(key) {
             Ok(i) => i + 1,
             Err(i) => i,
         }
@@ -2923,3 +2923,4 @@ mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so som
 
 #[cfg(test)]
 use Entry::*;
+
