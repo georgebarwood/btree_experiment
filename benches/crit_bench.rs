@@ -25,22 +25,27 @@ fn bench_clone(c: &mut Criterion) {
 fn bench_get(c: &mut Criterion) {
     let mut group = c.benchmark_group("Get");
     for n in [100, 1000, 10000, 100000].iter() {
+        let n = *n;
         let mut exp_map = btree_experiment::BTreeMap::new();
-        for i in 0..*n {
+        for i in 0..n {
             exp_map.insert(i, i);
         }
 
         let mut std_map = std::collections::BTreeMap::new();
-        for i in 0..*n {
+        for i in 0..n {
             std_map.insert(i, i);
         }
 
-        group.bench_function(BenchmarkId::new("Exp", n), |b| {
-            b.iter(|| exp_map.get(&(n - 100)))
-        });
-        group.bench_function(BenchmarkId::new("Std", n), |b| {
-            b.iter(|| std_map.get(&(n - 100)))
-        });
+        group.bench_function(BenchmarkId::new("Exp", n), |b|
+            b.iter(||
+               { for i in 0..n{ assert!( exp_map.get(&i).unwrap() == &i ); } }
+            )
+        );
+        group.bench_function(BenchmarkId::new("Std", n), |b|
+            b.iter(||
+               { for i in 0..n{ assert!( std_map.get(&i).unwrap() == &i ); } }
+            )
+        );
     }
     group.finish();
 }
