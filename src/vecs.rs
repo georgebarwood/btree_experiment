@@ -1,6 +1,7 @@
 use std::{
     alloc,
     alloc::Layout,
+    borrow::Borrow,
     cmp::Ordering,
     fmt,
     fmt::Debug,
@@ -8,7 +9,6 @@ use std::{
     ops::{Deref, DerefMut},
     ptr,
     ptr::NonNull,
-    borrow::Borrow
 };
 
 /// Basic vec, does not have own capacity or length, just a pointer to memory.
@@ -603,16 +603,20 @@ impl<K, V> PairVec<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let (mut i, mut j) = (0, self.len());
-        while i < j {
-            let m = (i + j) / 2;
-            match self.ixk(m).borrow().cmp(key) {
-                Ordering::Equal => return Ok(m),
-                Ordering::Less => i = m + 1,
-                Ordering::Greater => j = m,
+        unsafe {
+            let (mut i, mut j) = (0, self.len());
+            let p = self.p.as_ptr().cast::<K>();
+            let mut m = (i + j) >> 1;
+            while i != j {
+                match (*p.add(m)).borrow().cmp(key) {
+                    Ordering::Equal => return Ok(m),
+                    Ordering::Less => i = m + 1,
+                    Ordering::Greater => j = m,
+                }
+                m = (i + j) >> 1;
             }
+            Err(i)
         }
-        Err(i)
     }
 
     pub fn search_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
@@ -620,16 +624,20 @@ impl<K, V> PairVec<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let (mut i, mut j) = (0, n);
-        while i < j {
-            let m = (i + j) / 2;
-            match self.ixk(m).borrow().cmp(key) {
-                Ordering::Equal => return Ok(m),
-                Ordering::Less => i = m + 1,
-                Ordering::Greater => j = m,
+        unsafe {
+            let (mut i, mut j) = (0, n);
+            let p = self.p.as_ptr().cast::<K>();
+            let mut m = (i + j) >> 1;
+            while i != j {
+                match (*p.add(m)).borrow().cmp(key) {
+                    Ordering::Equal => return Ok(m),
+                    Ordering::Less => i = m + 1,
+                    Ordering::Greater => j = m,
+                }
+                m = (i + j) >> 1;
             }
+            Err(i)
         }
-        Err(i)
     }
 
     #[inline]
@@ -646,15 +654,6 @@ impl<K, V> PairVec<K, V> {
         let kp = self.p.as_ptr().cast::<K>().add(i);
         let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
         (kp, vp)
-    }
-
-    #[inline]
-    pub fn ixk(&self, i: usize) -> &K {
-        safe_assert!(i < self.len());
-        unsafe {
-            let kp = self.p.as_ptr().cast::<K>().add(i);
-            &*kp
-        }
     }
 
     #[inline]

@@ -224,12 +224,13 @@ impl<K, V> BTreeMap<K, V> {
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&K, &mut V) -> bool,
-        K: Ord
+        K: Ord,
     {
-        let mut c = self.lower_bound_mut( Bound::Unbounded );
-        while let Some((k,v)) = c.next()
-        {
-            if !f(k, v) { c.remove_prev(); }
+        let mut c = self.lower_bound_mut(Bound::Unbounded);
+        while let Some((k, v)) = c.next() {
+            if !f(k, v) {
+                c.remove_prev();
+            }
         }
     }
 
@@ -869,7 +870,7 @@ impl<K, V> Leaf<K, V> {
         v.into_iter()
     }
 
-#[inline]
+    #[inline]
     fn look_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
@@ -2923,4 +2924,3 @@ mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so som
 
 #[cfg(test)]
 use Entry::*;
-
