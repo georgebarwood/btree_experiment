@@ -1576,10 +1576,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         }
         StealResultMut::Nothing
     }
-}
-impl<'a, K, V> Iterator for RangeMut<'a, K, V> {
-    type Item = (&'a K, &'a mut V);
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
             if let Some(f) = &mut self.fwd_leaf {
                 if let Some(x) = f.next() {
@@ -1611,9 +1608,8 @@ impl<'a, K, V> Iterator for RangeMut<'a, K, V> {
             }
         }
     }
-}
-impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
-    fn next_back(&mut self) -> Option<Self::Item> {
+
+    fn next_back_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
                 if let Some(x) = f.next_back() {
@@ -1646,6 +1642,31 @@ impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
         }
     }
 }
+impl<'a, K, V> Iterator for RangeMut<'a, K, V> {
+    type Item = (&'a K, &'a mut V);
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(f) = &mut self.fwd_leaf {
+            if let Some(x) = f.next() {
+                return Some(x);
+            }
+            self.fwd_leaf = None;
+        }
+        self.next_inner()
+    }
+}
+impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some(f) = &mut self.bck_leaf {
+            if let Some(x) = f.next_back() {
+                return Some(x);
+            }
+            self.bck_leaf = None;
+        }
+        self.next_back_inner()
+    }
+}
 impl<'a, K, V> FusedIterator for RangeMut<'a, K, V> {}
 
 // Consuming iteration.
@@ -1673,6 +1694,7 @@ impl<K, V> IntoIter<K, V> {
 }
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.inner.next()?;
         self.len -= 1;
@@ -1683,6 +1705,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let result = self.inner.next_back()?;
         self.len -= 1;
@@ -1767,10 +1790,8 @@ impl<K, V> IntoIterInner<K, V> {
         }
         StealResultCon::Nothing
     }
-}
-impl<K, V> Iterator for IntoIterInner<K, V> {
-    type Item = (K, V);
-    fn next(&mut self) -> Option<Self::Item> {
+
+    fn next_inner(&mut self) -> Option<(K, V)> {
         loop {
             if let Some(f) = &mut self.fwd_leaf {
                 if let Some(x) = f.next() {
@@ -1802,9 +1823,7 @@ impl<K, V> Iterator for IntoIterInner<K, V> {
             }
         }
     }
-}
-impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
-    fn next_back(&mut self) -> Option<Self::Item> {
+    fn next_back_inner(&mut self) -> Option<(K, V)> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
                 if let Some(x) = f.next_back() {
@@ -1838,6 +1857,29 @@ impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
         }
     }
 }
+impl<K, V> Iterator for IntoIterInner<K, V> {
+    type Item = (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(f) = &mut self.fwd_leaf {
+            if let Some(x) = f.next() {
+                return Some(x);
+            }
+            self.fwd_leaf = None;
+        }
+        self.next_inner()
+    }
+}
+impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some(f) = &mut self.bck_leaf {
+            if let Some(x) = f.next_back() {
+                return Some(x);
+            }
+            self.bck_leaf = None;
+        }
+        self.next_back_inner()
+    }
+}
 
 // Immutable reference iteration.
 
@@ -1855,6 +1897,7 @@ pub struct Iter<'a, K, V> {
 }
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1873,6 +1916,7 @@ impl<'a, K, V> ExactSizeIterator for Iter<'a, K, V> {
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -2013,10 +2057,8 @@ impl<'a, K, V> Range<'a, K, V> {
         }
         StealResult::Nothing
     }
-}
-impl<'a, K, V> Iterator for Range<'a, K, V> {
-    type Item = (&'a K, &'a V);
-    fn next(&mut self) -> Option<Self::Item> {
+
+    fn next_inner(&mut self) -> Option<(&'a K, &'a V)> {
         loop {
             if let Some(f) = &mut self.fwd_leaf {
                 if let Some(x) = f.next() {
@@ -2048,9 +2090,8 @@ impl<'a, K, V> Iterator for Range<'a, K, V> {
             }
         }
     }
-}
-impl<'a, K, V> DoubleEndedIterator for Range<'a, K, V> {
-    fn next_back(&mut self) -> Option<Self::Item> {
+
+    fn next_back_inner(&mut self) -> Option<(&'a K, &'a V)> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
                 if let Some(x) = f.next_back() {
@@ -2081,6 +2122,31 @@ impl<'a, K, V> DoubleEndedIterator for Range<'a, K, V> {
                 }
             }
         }
+    }
+}
+impl<'a, K, V> Iterator for Range<'a, K, V> {
+    type Item = (&'a K, &'a V);
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(f) = &mut self.fwd_leaf {
+            if let Some(x) = f.next() {
+                return Some(x);
+            }
+            self.fwd_leaf = None;
+        }
+        self.next_inner()
+    }
+}
+impl<'a, K, V> DoubleEndedIterator for Range<'a, K, V> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some(f) = &mut self.bck_leaf {
+            if let Some(x) = f.next_back() {
+                return Some(x);
+            }
+            self.bck_leaf = None;
+        }
+        self.next_back_inner()
     }
 }
 impl<'a, K, V> FusedIterator for Range<'a, K, V> {}
@@ -2919,8 +2985,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-#[cfg(test)]
-mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
-
-#[cfg(test)]
-use Entry::*;
+// #[cfg(test)]
+// mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!

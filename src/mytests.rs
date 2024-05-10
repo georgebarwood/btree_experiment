@@ -460,6 +460,34 @@ fn std_iter() {
 }
 
 #[test]
+fn exp_iter_mut() {
+    let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+    let n = N * 10;
+    for i in 0..n {
+        m.entry(i).or_insert(i);
+    }
+    for _rep in 0..REP {
+        for (k, v) in &mut m {
+            assert!(k == v);
+        }
+    }
+}
+
+#[test]
+fn std_iter_mut() {
+    let mut m = std::collections::BTreeMap::<usize, usize>::default();
+    let n = N * 10;
+    for i in 0..n {
+        m.entry(i).or_insert(i);
+    }
+    for _rep in 0..REP {
+        for (k, v) in &mut m {
+            assert!(k == v);
+        }
+    }
+}
+
+#[test]
 fn exp_into_iter() {
     for _rep in 0..REP / 10 {
         let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();

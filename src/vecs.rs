@@ -367,6 +367,7 @@ pub(crate) struct ShortVecIter<T> {
 
 impl<T> Iterator for ShortVecIter<T> {
     type Item = T;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len() {
             None
@@ -378,6 +379,7 @@ impl<T> Iterator for ShortVecIter<T> {
     }
 }
 impl<T> DoubleEndedIterator for ShortVecIter<T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len() {
             None
@@ -788,6 +790,7 @@ impl<'a, K, V> IterPairVec<'a, K, V> {
 }
 impl<'a, K, V> Iterator for IterPairVec<'a, K, V> {
     type Item = (&'a K, &'a V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.ix == self.ixb {
             return None;
@@ -798,6 +801,7 @@ impl<'a, K, V> Iterator for IterPairVec<'a, K, V> {
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterPairVec<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.ix == self.ixb {
             return None;
@@ -821,6 +825,7 @@ impl<'a, K, V> IterMutPairVec<'a, K, V> {
 }
 impl<'a, K, V> Iterator for IterMutPairVec<'a, K, V> {
     type Item = (&'a K, &'a mut V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.ix == self.ixb {
@@ -833,6 +838,7 @@ impl<'a, K, V> Iterator for IterMutPairVec<'a, K, V> {
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterMutPairVec<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.ix == self.ixb {
@@ -858,6 +864,7 @@ impl<K, V> IntoIterPairVec<K, V> {
 }
 impl<K, V> Iterator for IntoIterPairVec<K, V> {
     type Item = (K, V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.ix == self.ixb {
@@ -870,6 +877,7 @@ impl<K, V> Iterator for IntoIterPairVec<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoIterPairVec<K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.ix == self.ixb {

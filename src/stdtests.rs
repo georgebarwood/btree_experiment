@@ -5,6 +5,7 @@ https://github.com/rust-lang/rust/blob/master/library/alloc/src/collections/btre
 */
 
 use crate::*;
+use Entry::*;
 
 use std::{
     assert_matches::assert_matches,
