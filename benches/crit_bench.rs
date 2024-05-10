@@ -1,6 +1,12 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-criterion_group!(benches, bench_get, bench_clone, bench_ref_iter);
+criterion_group!(
+    benches,
+    bench_get,
+    bench_clone,
+    bench_ref_iter,
+    bench_into_iter
+);
 criterion_main!(benches);
 
 fn bench_clone(c: &mut Criterion) {
@@ -69,16 +75,53 @@ fn bench_ref_iter(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("Exp", n), |b| {
             b.iter(|| {
-                for (k, v) in &exp_map {
+                for (k, v) in exp_map.iter() {
                     assert!(k == v);
                 }
             })
         });
         group.bench_function(BenchmarkId::new("Std", n), |b| {
             b.iter(|| {
-                for (k, v) in &std_map {
+                for (k, v) in std_map.iter() {
                     assert!(k == v);
                 }
+            })
+        });
+    }
+    group.finish();
+}
+
+fn exp_into_iter_test(n: usize) {
+    let mut m = btree_experiment::BTreeMap::<usize, usize>::default();
+    for i in 0..n {
+        m.insert(i, i);
+    }
+    for (k, v) in m {
+        assert!(k == v);
+    }
+}
+
+fn std_into_iter_test(n: usize) {
+    let mut m = std::collections::BTreeMap::<usize, usize>::default();
+    for i in 0..n {
+        m.insert(i, i);
+    }
+    for (k, v) in m {
+        assert!(k == v);
+    }
+}
+
+fn bench_into_iter(c: &mut Criterion) {
+    let mut group = c.benchmark_group("IntoIter");
+    for n in [100, 1000, 10000].iter() {
+        group.bench_function(BenchmarkId::new("Exp", n), |b| {
+            b.iter(|| {
+                exp_into_iter_test(*n);
+            })
+        });
+        group.bench_function(BenchmarkId::new("Std", n), |b| {
+            b.iter(|| {
+                std_into_iter_test(*n);
             })
         });
     }
