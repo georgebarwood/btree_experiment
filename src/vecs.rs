@@ -598,43 +598,36 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
+    #[inline]
     pub fn search<Q>(&self, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        unsafe {
-            let (mut i, mut j) = (0, self.len());
-            let p = self.p.as_ptr().cast::<K>();
-            let mut m = (i + j) >> 1;
-            while i != j {
-                match (*p.add(m)).borrow().cmp(key) {
-                    Ordering::Equal => return Ok(m),
-                    Ordering::Less => i = m + 1,
-                    Ordering::Greater => j = m,
-                }
-                m = (i + j) >> 1;
-            }
-            Err(i)
-        }
+        self.search_to(self.len as usize, key)
     }
 
-    pub fn search_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
+    pub fn search_to<Q>(&self, mut j: usize, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         unsafe {
-            let (mut i, mut j) = (0, n);
+            let mut i = 0;
             let p = self.p.as_ptr().cast::<K>();
-            let mut m = (i + j) >> 1;
+            let mut m = j >> 1;
             while i != j {
                 match (*p.add(m)).borrow().cmp(key) {
                     Ordering::Equal => return Ok(m),
-                    Ordering::Less => i = m + 1,
-                    Ordering::Greater => j = m,
+                    Ordering::Less => {
+                        i = m + 1;
+                        m = (i + j) >> 1;
+                    }
+                    Ordering::Greater => {
+                        j = m;
+                        m = (i + j) >> 1;
+                    }
                 }
-                m = (i + j) >> 1;
             }
             Err(i)
         }
