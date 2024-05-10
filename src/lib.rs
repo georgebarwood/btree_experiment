@@ -1415,6 +1415,7 @@ pub struct IterMut<'a, K, V> {
 }
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a K, &'a mut V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1433,6 +1434,7 @@ impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> {
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1608,7 +1610,6 @@ impl<'a, K, V> RangeMut<'a, K, V> {
             }
         }
     }
-
     fn next_back_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
             if let Some(f) = &mut self.bck_leaf {
@@ -1790,7 +1791,6 @@ impl<K, V> IntoIterInner<K, V> {
         }
         StealResultCon::Nothing
     }
-
     fn next_inner(&mut self) -> Option<(K, V)> {
         loop {
             if let Some(f) = &mut self.fwd_leaf {
@@ -1859,6 +1859,7 @@ impl<K, V> IntoIterInner<K, V> {
 }
 impl<K, V> Iterator for IntoIterInner<K, V> {
     type Item = (K, V);
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(f) = &mut self.fwd_leaf {
             if let Some(x) = f.next() {
@@ -1870,6 +1871,7 @@ impl<K, V> Iterator for IntoIterInner<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(f) = &mut self.bck_leaf {
             if let Some(x) = f.next_back() {
@@ -2155,7 +2157,7 @@ impl<'a, K, V> FusedIterator for Range<'a, K, V> {}
 pub struct IntoKeys<K, V>(IntoIter<K, V>);
 impl<K, V> Iterator for IntoKeys<K, V> {
     type Item = K;
-
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         Some(self.0.next()?.0)
     }
@@ -2164,6 +2166,7 @@ impl<K, V> Iterator for IntoKeys<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoKeys<K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         Some(self.0.next_back()?.0)
     }
@@ -2179,7 +2182,7 @@ impl<K, V> FusedIterator for IntoKeys<K, V> {}
 pub struct IntoValues<K, V>(IntoIter<K, V>);
 impl<K, V> Iterator for IntoValues<K, V> {
     type Item = V;
-
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         Some(self.0.next()?.1)
     }
@@ -2188,6 +2191,7 @@ impl<K, V> Iterator for IntoValues<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoValues<K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         Some(self.0.next_back()?.1)
     }
@@ -2206,11 +2210,13 @@ impl<K, V> FusedIterator for IntoValues<K, V> {}
 pub struct ValuesMut<'a, K, V>(IterMut<'a, K, V>);
 impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
     type Item = &'a mut V;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|(_, v)| v)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for ValuesMut<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(_, v)| v)
     }
@@ -2227,11 +2233,13 @@ impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> {}
 pub struct Values<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Values<'a, K, V> {
     type Item = &'a V;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|(_, v)| v)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Values<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(_, v)| v)
     }
@@ -2248,11 +2256,13 @@ impl<'a, K, V> FusedIterator for Values<'a, K, V> {}
 pub struct Keys<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
     type Item = &'a K;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|(k, _)| k)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(k, _)| k)
     }
@@ -2985,5 +2995,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-// #[cfg(test)]
-// mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
