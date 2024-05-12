@@ -1,3 +1,5 @@
+#![feature(btree_cursors)]
+
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 criterion_group!(
@@ -5,7 +7,8 @@ criterion_group!(
     bench_get,
     bench_clone,
     bench_ref_iter,
-    bench_into_iter
+    bench_into_iter,
+    bench_split_off
 );
 criterion_main!(benches);
 
@@ -62,7 +65,7 @@ fn bench_get(c: &mut Criterion) {
 
 fn bench_ref_iter(c: &mut Criterion) {
     let mut group = c.benchmark_group("RefIter");
-    for n in [100, 1000, 10000, 100000].iter() {
+    for n in [50, 100, 1000, 10000, 100000].iter() {
         let mut exp_map = btree_experiment::BTreeMap::new();
         for i in 0..*n {
             exp_map.insert(i, i);
@@ -75,14 +78,14 @@ fn bench_ref_iter(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("Exp", n), |b| {
             b.iter(|| {
-                for (k, v) in exp_map.iter() {
+                for (k, v) in exp_map.iter_mut() {
                     assert!(k == v);
                 }
             })
         });
         group.bench_function(BenchmarkId::new("Std", n), |b| {
             b.iter(|| {
-                for (k, v) in std_map.iter() {
+                for (k, v) in std_map.iter_mut() {
                     assert!(k == v);
                 }
             })
@@ -122,6 +125,48 @@ fn bench_into_iter(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("Std", n), |b| {
             b.iter(|| {
                 std_into_iter_test(*n);
+            })
+        });
+    }
+    group.finish();
+}
+
+use std::ops::Bound;
+
+fn exp_split_off_test(n: usize) {
+        let mut m = btree_experiment::BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            c.insert_before(i, i).unwrap();
+        }
+        assert!(m.len() == n);
+        let m2 = m.split_off(&(n / 2));
+        assert!(m2.len() == n / 2);
+        assert!(m.len() + m2.len() == n);
+}
+fn std_split_off_test(n: usize) {
+        let mut m = std::collections::BTreeMap::<usize, usize>::new();
+        let mut c = m.lower_bound_mut(Bound::Unbounded);
+        for i in 0..n {
+            c.insert_before(i, i).unwrap();
+        }
+        assert!(m.len() == n);
+        let m2 = m.split_off(&(n / 2));
+        assert!(m2.len() == n / 2);
+        assert!(m.len() + m2.len() == n);
+}
+
+fn bench_split_off(c: &mut Criterion) {
+    let mut group = c.benchmark_group("SplitOff");
+    for n in [10000].iter() {
+        group.bench_function(BenchmarkId::new("Exp", n), |b| {
+            b.iter(|| {
+                exp_split_off_test(*n);
+            })
+        });
+        group.bench_function(BenchmarkId::new("Std", n), |b| {
+            b.iter(|| {
+                std_split_off_test(*n);
             })
         });
     }
