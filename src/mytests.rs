@@ -36,7 +36,7 @@ fn exp_get_test() {
     }
     assert!(m.len() == n);
     print_memory();
-    for _rep in 0..REP * 10 {
+    for _rep in 0..REP*10 {
         for i in 0..n {
             let v = i;
             assert!(m[&i] == v);
@@ -55,7 +55,7 @@ fn std_get_test() {
     }
     assert!(m.len() == n);
     print_memory();
-    for _rep in 0..REP * 10 {
+    for _rep in 0..REP*10 {
         for i in 0..n {
             let v = i;
             assert!(m[&i] == v);

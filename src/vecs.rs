@@ -150,7 +150,11 @@ macro_rules! safe_assert {
 /// In debug mode or feature unsafe-optim not enabled, same as assert! otherwise does nothing.
 #[cfg(all(not(debug_assertions), feature = "unsafe-optim"))]
 macro_rules! safe_assert {
-    ( $cond: expr ) => {};
+    ( $cond: expr ) => {
+        if !$cond {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+    };
 }
 
 /// Vec with limited capacity that allocates incrementally and trims when split.
@@ -474,6 +478,11 @@ impl<K, V> PairVec<K, V> {
         (layout, off)
     }
 
+    #[inline]
+    unsafe fn off(amount: usize) -> usize {
+        Self::layout(amount).1
+    }
+
     fn trim(&mut self) {
         self.alloc(self.len());
     }
@@ -609,6 +618,7 @@ impl<K, V> PairVec<K, V> {
         self.search_to(self.len as usize, key)
     }
 
+    #[inline]
     pub fn search_to<Q>(&self, mut j: usize, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
@@ -617,17 +627,15 @@ impl<K, V> PairVec<K, V> {
         unsafe {
             let mut i = 0;
             let p = self.p.as_ptr().cast::<K>();
-            let mut m = j >> 1;
             while i != j {
+                let m = (i + j) >> 1;
                 match (*p.add(m)).borrow().cmp(key) {
                     Ordering::Equal => return Ok(m),
                     Ordering::Less => {
                         i = m + 1;
-                        m = (i + j) >> 1;
                     }
                     Ordering::Greater => {
                         j = m;
-                        m = (i + j) >> 1;
                     }
                 }
             }
@@ -637,7 +645,7 @@ impl<K, V> PairVec<K, V> {
 
     #[inline]
     unsafe fn ixmp(&mut self, i: usize) -> (*mut K, *mut V) {
-        let (_, off) = Self::layout(self.alloc as usize);
+        let off = Self::off(self.alloc as usize);
         let kp = self.p.as_ptr().cast::<K>().add(i);
         let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
         (kp, vp)
@@ -645,7 +653,7 @@ impl<K, V> PairVec<K, V> {
 
     #[inline]
     unsafe fn ixp(&self, i: usize) -> (*const K, *const V) {
-        let (_, off) = Self::layout(self.alloc as usize);
+        let off = Self::off(self.alloc as usize);
         let kp = self.p.as_ptr().cast::<K>().add(i);
         let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
         (kp, vp)
@@ -655,7 +663,7 @@ impl<K, V> PairVec<K, V> {
     pub fn ixv(&self, i: usize) -> &V {
         safe_assert!(i < self.len());
         unsafe {
-            let (_, off) = Self::layout(self.alloc as usize);
+            let off = Self::off(self.alloc as usize);
             let vp = self.p.as_ptr().add(off).cast::<V>().add(i);
             &*vp
         }
@@ -811,7 +819,6 @@ impl<'a, K, V> DoubleEndedIterator for IterPairVec<'a, K, V> {
         Some(kv)
     }
 }
-
 #[derive(Debug)]
 pub struct IterMutPairVec<'a, K, V> {
     v: &'a mut PairVec<K, V>,

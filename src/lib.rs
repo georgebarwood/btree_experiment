@@ -1580,12 +1580,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     }
     fn next_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
-            if let Some(f) = &mut self.fwd_leaf {
-                if let Some(x) = f.next() {
-                    return Some(x);
-                }
-                self.fwd_leaf = None;
-            } else if let Some(s) = self.fwd_stk.last_mut() {
+            if let Some(s) = self.fwd_stk.last_mut() {
                 if let Some(kv) = s.v.next() {
                     if let Some(ct) = s.c.next() {
                         self.push_tree(ct, false);
@@ -1596,7 +1591,15 @@ impl<'a, K, V> RangeMut<'a, K, V> {
             } else {
                 match self.steal_bck() {
                     StealResultMut::KV(kv) => return Some(kv),
-                    StealResultMut::CT(ct) => self.push_tree(ct, false),
+                    StealResultMut::CT(ct) => {
+                        self.push_tree(ct, false);
+                        if let Some(f) = &mut self.fwd_leaf {
+                            if let Some(x) = f.next() {
+                                return Some(x);
+                            }
+                            self.fwd_leaf = None;
+                        }
+                    }
                     StealResultMut::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
                             if let Some(x) = f.next() {
@@ -1612,12 +1615,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     }
     fn next_back_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
-            if let Some(f) = &mut self.bck_leaf {
-                if let Some(x) = f.next_back() {
-                    return Some(x);
-                }
-                self.bck_leaf = None;
-            } else if let Some(s) = self.bck_stk.last_mut() {
+            if let Some(s) = self.bck_stk.last_mut() {
                 if let Some(kv) = s.v.next_back() {
                     if let Some(ct) = s.c.next_back() {
                         self.push_tree_back(ct);
@@ -1628,7 +1626,15 @@ impl<'a, K, V> RangeMut<'a, K, V> {
             } else {
                 match self.steal_fwd() {
                     StealResultMut::KV(kv) => return Some(kv),
-                    StealResultMut::CT(ct) => self.push_tree_back(ct),
+                    StealResultMut::CT(ct) => {
+                        self.push_tree_back(ct);
+                        if let Some(f) = &mut self.bck_leaf {
+                            if let Some(x) = f.next_back() {
+                                return Some(x);
+                            }
+                            self.bck_leaf = None;
+                        }
+                    }
                     StealResultMut::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
                             if let Some(x) = f.next_back() {
@@ -1793,12 +1799,7 @@ impl<K, V> IntoIterInner<K, V> {
     }
     fn next_inner(&mut self) -> Option<(K, V)> {
         loop {
-            if let Some(f) = &mut self.fwd_leaf {
-                if let Some(x) = f.next() {
-                    return Some(x);
-                }
-                self.fwd_leaf = None;
-            } else if let Some(s) = self.fwd_stk.last_mut() {
+            if let Some(s) = self.fwd_stk.last_mut() {
                 if let Some(kv) = s.v.next() {
                     if let Some(ct) = s.c.next() {
                         self.push_tree(ct, false);
@@ -1809,7 +1810,15 @@ impl<K, V> IntoIterInner<K, V> {
             } else {
                 match self.steal_bck() {
                     StealResultCon::KV(kv) => return Some(kv),
-                    StealResultCon::CT(ct) => self.push_tree(ct, false),
+                    StealResultCon::CT(ct) => {
+                        self.push_tree(ct, false);
+                        if let Some(f) = &mut self.fwd_leaf {
+                            if let Some(x) = f.next() {
+                                return Some(x);
+                            }
+                        }
+                        self.fwd_leaf = None;
+                    }
                     StealResultCon::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
                             if let Some(x) = f.next() {
@@ -1825,12 +1834,7 @@ impl<K, V> IntoIterInner<K, V> {
     }
     fn next_back_inner(&mut self) -> Option<(K, V)> {
         loop {
-            if let Some(f) = &mut self.bck_leaf {
-                if let Some(x) = f.next_back() {
-                    return Some(x);
-                }
-                self.bck_leaf = None;
-            } else if let Some(s) = self.bck_stk.last_mut() {
+            if let Some(s) = self.bck_stk.last_mut() {
                 if let Some(kv) = s.v.next_back() {
                     if let Some(ct) = s.c.next_back() {
                         self.push_tree_back(ct);
@@ -1841,8 +1845,15 @@ impl<K, V> IntoIterInner<K, V> {
             } else {
                 match self.steal_fwd() {
                     StealResultCon::KV(kv) => return Some(kv),
-
-                    StealResultCon::CT(ct) => self.push_tree_back(ct),
+                    StealResultCon::CT(ct) => {
+                        self.push_tree_back(ct);
+                        if let Some(f) = &mut self.bck_leaf {
+                            if let Some(x) = f.next_back() {
+                                return Some(x);
+                            }
+                            self.bck_leaf = None;
+                        }
+                    }
                     StealResultCon::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
                             if let Some(x) = f.next_back() {
@@ -2062,12 +2073,7 @@ impl<'a, K, V> Range<'a, K, V> {
 
     fn next_inner(&mut self) -> Option<(&'a K, &'a V)> {
         loop {
-            if let Some(f) = &mut self.fwd_leaf {
-                if let Some(x) = f.next() {
-                    return Some(x);
-                }
-                self.fwd_leaf = None;
-            } else if let Some(s) = self.fwd_stk.last_mut() {
+            if let Some(s) = self.fwd_stk.last_mut() {
                 if let Some(kv) = s.v.next() {
                     if let Some(ct) = s.c.next() {
                         self.push_tree(ct, false);
@@ -2078,7 +2084,15 @@ impl<'a, K, V> Range<'a, K, V> {
             } else {
                 match self.steal_bck() {
                     StealResult::KV(kv) => return Some(kv),
-                    StealResult::CT(ct) => self.push_tree(ct, false),
+                    StealResult::CT(ct) => {
+                        self.push_tree(ct, false);
+                        if let Some(f) = &mut self.fwd_leaf {
+                            if let Some(x) = f.next() {
+                                return Some(x);
+                            }
+                            self.fwd_leaf = None;
+                        }
+                    }
                     StealResult::Nothing => {
                         if let Some(f) = &mut self.bck_leaf {
                             if let Some(x) = f.next() {
@@ -2095,12 +2109,7 @@ impl<'a, K, V> Range<'a, K, V> {
 
     fn next_back_inner(&mut self) -> Option<(&'a K, &'a V)> {
         loop {
-            if let Some(f) = &mut self.bck_leaf {
-                if let Some(x) = f.next_back() {
-                    return Some(x);
-                }
-                self.bck_leaf = None;
-            } else if let Some(s) = self.bck_stk.last_mut() {
+            if let Some(s) = self.bck_stk.last_mut() {
                 if let Some(kv) = s.v.next_back() {
                     if let Some(ct) = s.c.next_back() {
                         self.push_tree_back(ct);
@@ -2111,7 +2120,15 @@ impl<'a, K, V> Range<'a, K, V> {
             } else {
                 match self.steal_fwd() {
                     StealResult::KV(kv) => return Some(kv),
-                    StealResult::CT(ct) => self.push_tree_back(ct),
+                    StealResult::CT(ct) => {
+                        self.push_tree_back(ct);
+                        if let Some(f) = &mut self.bck_leaf {
+                            if let Some(x) = f.next_back() {
+                                return Some(x);
+                            }
+                            self.bck_leaf = None;
+                        }
+                    }
                     StealResult::Nothing => {
                         if let Some(f) = &mut self.fwd_leaf {
                             if let Some(x) = f.next_back() {
@@ -2995,5 +3012,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-#[cfg(test)]
-mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+//#[cfg(test)]
+//mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
