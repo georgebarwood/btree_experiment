@@ -698,7 +698,7 @@ impl<K, V> PairVec<K, V> {
 
     pub fn iter(&self) -> IterPairVec<K, V> {
         IterPairVec {
-            v: self,
+            v: Some(self),
             ix: 0,
             ixb: self.len(),
         }
@@ -707,7 +707,7 @@ impl<K, V> PairVec<K, V> {
     pub fn range(&self, x: usize, y: usize) -> IterPairVec<K, V> {
         safe_assert!(x <= y && y <= self.len());
         IterPairVec {
-            v: self,
+            v: Some(self),
             ix: x,
             ixb: y,
         }
@@ -716,7 +716,7 @@ impl<K, V> PairVec<K, V> {
     pub fn iter_mut(&mut self) -> IterMutPairVec<K, V> {
         let ixb = self.len();
         IterMutPairVec {
-            v: self,
+            v: Some(self),
             ix: 0,
             ixb,
         }
@@ -725,7 +725,7 @@ impl<K, V> PairVec<K, V> {
     pub fn range_mut(&mut self, x: usize, y: usize) -> IterMutPairVec<K, V> {
         safe_assert!(x <= y && y <= self.len());
         IterMutPairVec {
-            v: self,
+            v: Some(self),
             ix: x,
             ixb: y,
         }
@@ -734,7 +734,7 @@ impl<K, V> PairVec<K, V> {
     pub fn into_iter(self) -> IntoIterPairVec<K, V> {
         let ixb = self.len();
         IntoIterPairVec {
-            v: self,
+            v: Some(self),
             ix: 0,
             ixb,
         }
@@ -787,9 +787,18 @@ where
 
 #[derive(Debug, Clone)]
 pub struct IterPairVec<'a, K, V> {
-    v: &'a PairVec<K, V>,
+    v: Option<&'a PairVec<K, V>>,
     ix: usize,
     ixb: usize,
+}
+impl<'a, K, V> Default for IterPairVec<'a, K, V> {
+    fn default() -> Self {
+        Self {
+            v: None,
+            ix: 0,
+            ixb: 0,
+        }
+    }
 }
 impl<'a, K, V> IterPairVec<'a, K, V> {
     pub fn len(&self) -> usize {
@@ -803,7 +812,8 @@ impl<'a, K, V> Iterator for IterPairVec<'a, K, V> {
         if self.ix == self.ixb {
             return None;
         }
-        let kv = self.v.ix(self.ix);
+        let v = unsafe { self.v.unwrap_unchecked() };
+        let kv = v.ix(self.ix);
         self.ix += 1;
         Some(kv)
     }
@@ -814,16 +824,26 @@ impl<'a, K, V> DoubleEndedIterator for IterPairVec<'a, K, V> {
         if self.ix == self.ixb {
             return None;
         }
+        let v = unsafe { self.v.unwrap_unchecked() };
         self.ixb -= 1;
-        let kv = self.v.ix(self.ixb);
+        let kv = v.ix(self.ixb);
         Some(kv)
     }
 }
 #[derive(Debug)]
 pub struct IterMutPairVec<'a, K, V> {
-    v: &'a mut PairVec<K, V>,
+    v: Option<&'a mut PairVec<K, V>>,
     ix: usize,
     ixb: usize,
+}
+impl<'a, K, V> Default for IterMutPairVec<'a, K, V> {
+    fn default() -> Self {
+        Self {
+            v: None,
+            ix: 0,
+            ixb: 0,
+        }
+    }
 }
 impl<'a, K, V> IterMutPairVec<'a, K, V> {
     pub fn len(&self) -> usize {
@@ -838,7 +858,8 @@ impl<'a, K, V> Iterator for IterMutPairVec<'a, K, V> {
             if self.ix == self.ixb {
                 return None;
             }
-            let (kp, vp) = self.v.ixmp(self.ix);
+            let v = self.v.as_mut().unwrap();
+            let (kp, vp) = v.ixmp(self.ix);
             self.ix += 1;
             Some((&mut *kp, &mut *vp))
         }
@@ -852,7 +873,8 @@ impl<'a, K, V> DoubleEndedIterator for IterMutPairVec<'a, K, V> {
                 return None;
             }
             self.ixb -= 1;
-            let (kp, vp) = self.v.ixmp(self.ixb);
+            let v = self.v.as_mut().unwrap();
+            let (kp, vp) = v.ixmp(self.ixb);
             Some((&mut *kp, &mut *vp))
         }
     }
@@ -860,9 +882,18 @@ impl<'a, K, V> DoubleEndedIterator for IterMutPairVec<'a, K, V> {
 
 #[derive(Debug)]
 pub struct IntoIterPairVec<K, V> {
-    v: PairVec<K, V>,
+    v: Option<PairVec<K, V>>,
     ix: usize,
     ixb: usize,
+}
+impl<K, V> Default for IntoIterPairVec<K, V> {
+    fn default() -> Self {
+        Self {
+            v: None,
+            ix: 0,
+            ixb: 0,
+        }
+    }
 }
 impl<K, V> IntoIterPairVec<K, V> {
     pub fn len(&self) -> usize {
@@ -877,7 +908,8 @@ impl<K, V> Iterator for IntoIterPairVec<K, V> {
             if self.ix == self.ixb {
                 return None;
             }
-            let (kp, vp) = self.v.ixmp(self.ix);
+            let v = self.v.as_mut().unwrap();
+            let (kp, vp) = v.ixmp(self.ix);
             self.ix += 1;
             Some((kp.read(), vp.read()))
         }
@@ -890,8 +922,9 @@ impl<K, V> DoubleEndedIterator for IntoIterPairVec<K, V> {
             if self.ix == self.ixb {
                 return None;
             }
+            let v = self.v.as_mut().unwrap();
             self.ixb -= 1;
-            let (kp, vp) = self.v.ixmp(self.ixb);
+            let (kp, vp) = v.ixmp(self.ixb);
             Some((kp.read(), vp.read()))
         }
     }
@@ -901,6 +934,8 @@ impl<K, V> Drop for IntoIterPairVec<K, V> {
         while self.ix != self.ixb {
             self.next();
         }
-        self.v.len = 0;
+        if let Some(v) = &mut self.v {
+            v.len = 0;
+        }
     }
 }

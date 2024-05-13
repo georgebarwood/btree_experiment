@@ -5,24 +5,24 @@ const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
 #[test]
 fn exp_mem_test() {
-    let n = N;
+    let n = N * 10;
     let mut map = BTreeMap::new();
     for i in 0..n {
-        map.insert(i as u16, 1u8);
+        map.insert(i as u32, 1u8);
     }
     crate::print_memory();
-    println!("Required memory: {} bytes", n * 3);
+    println!("Required memory: {} bytes", n * 5);
 }
 
 #[test]
 fn std_mem_test() {
-    let n = N;
+    let n = N * 10;
     let mut map = std::collections::BTreeMap::new();
     for i in 0..n {
-        map.insert(i as u16, 1u8);
+        map.insert(i as u32, 1u8);
     }
     crate::print_memory();
-    println!("Required memory: {} bytes", n * 3);
+    println!("Required memory: {} bytes", n * 5);
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn exp_get_test() {
     }
     assert!(m.len() == n);
     print_memory();
-    for _rep in 0..REP*10 {
+    for _rep in 0..REP * 10 {
         for i in 0..n {
             let v = i;
             assert!(m[&i] == v);
@@ -55,7 +55,7 @@ fn std_get_test() {
     }
     assert!(m.len() == n);
     print_memory();
-    for _rep in 0..REP*10 {
+    for _rep in 0..REP * 10 {
         for i in 0..n {
             let v = i;
             assert!(m[&i] == v);
@@ -432,7 +432,7 @@ fn std_entry() {
 }
 
 #[test]
-fn exp_iter() {
+fn exp_iter_nm() {
     let mut m = /*std::collections::*/ BTreeMap::<usize, usize>::default();
     let n = N * 10;
     for i in 0..n {
@@ -446,7 +446,7 @@ fn exp_iter() {
 }
 
 #[test]
-fn std_iter() {
+fn std_iter_nm() {
     let mut m = std::collections::BTreeMap::<usize, usize>::default();
     let n = N * 10;
     for i in 0..n {

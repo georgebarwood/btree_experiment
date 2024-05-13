@@ -537,6 +537,7 @@ where
     /// Returns a reference to the value corresponding to the supplied key.
     ///
     /// Panics if the key is not present in the `BTreeMap`.
+    #[inline]
     fn index(&self, key: &Q) -> &V {
         self.get(key).expect("no entry found for key")
     }
@@ -761,21 +762,32 @@ impl<K, V> Tree<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self {
-            Tree::L(leaf) => leaf.get_key_value(key),
-            Tree::NL(nonleaf) => nonleaf.get_key_value(key),
+        let mut s = self;
+        loop {
+            match s {
+                Tree::L(leaf) => return leaf.get_key_value(key),
+                Tree::NL(nl) => match nl.v.look(key) {
+                    Ok(i) => return Some(nl.v.0.ix(i)),
+                    Err(i) => s = nl.c.ix(i),
+                },
+            }
         }
     }
 
-    #[inline]
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self {
-            Tree::L(leaf) => leaf.get(key),
-            Tree::NL(nonleaf) => nonleaf.get(key),
+        let mut s = self;
+        loop {
+            match s {
+                Tree::L(leaf) => return leaf.get(key),
+                Tree::NL(nl) => match nl.v.look(key) {
+                    Ok(i) => return Some(nl.v.0.ixv(i)),
+                    Err(i) => s = nl.c.ix(i),
+                },
+            }
         }
     }
 
@@ -784,9 +796,15 @@ impl<K, V> Tree<K, V> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match self {
-            Tree::L(leaf) => leaf.get_mut(key),
-            Tree::NL(nonleaf) => nonleaf.get_mut(key),
+        let mut s = self;
+        loop {
+            match s {
+                Tree::L(leaf) => return leaf.get_mut(key),
+                Tree::NL(nl) => match nl.v.look(key) {
+                    Ok(i) => return Some(nl.v.0.ixmv(i)),
+                    Err(i) => s = nl.c.ixm(i),
+                },
+            }
         }
     }
 
@@ -870,7 +888,6 @@ impl<K, V> Leaf<K, V> {
         v.into_iter()
     }
 
-    #[inline]
     fn look_to<Q>(&self, n: usize, key: &Q) -> Result<usize, usize>
     where
         K: Borrow<Q> + Ord,
@@ -980,6 +997,7 @@ impl<K, V> Leaf<K, V> {
         Some(self.0.remove(self.look(key).ok()?))
     }
 
+    #[inline]
     fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
     where
         K: Borrow<Q> + Ord,
@@ -997,6 +1015,7 @@ impl<K, V> Leaf<K, V> {
         Some(self.0.ixv(self.look(key).ok()?))
     }
 
+    #[inline]
     fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q> + Ord,
@@ -1135,40 +1154,6 @@ impl<K, V> NonLeafInner<K, V> {
         match self.v.look(key) {
             Ok(i) => Some(self.remove_at(i).0),
             Err(i) => self.c.ixm(i).remove(key),
-        }
-    }
-
-    fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        match self.v.look(key) {
-            Ok(i) => Some(self.v.0.ix(i)),
-            Err(i) => self.c.ix(i).get_key_value(key),
-        }
-    }
-
-    #[inline]
-    fn get<Q>(&self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        match self.v.look(key) {
-            Ok(i) => Some(self.v.0.ixv(i)),
-            Err(i) => self.c.ix(i).get(key),
-        }
-    }
-
-    fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        match self.v.look(key) {
-            Ok(i) => Some(self.v.0.ixmv(i)),
-            Err(i) => self.c.ixm(i).get_mut(key),
         }
     }
 
@@ -1415,7 +1400,6 @@ pub struct IterMut<'a, K, V> {
 }
 impl<'a, K, V> Iterator for IterMut<'a, K, V> {
     type Item = (&'a K, &'a mut V);
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1434,7 +1418,6 @@ impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> {
     }
 }
 impl<'a, K, V> DoubleEndedIterator for IterMut<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1460,16 +1443,16 @@ pub struct RangeMut<'a, K, V> {
        once they are exhausted, key-value pairs and child trees are "stolen" from
        bck_stk and bck_leaf which are (conversely) initially used for next_back iteration.
     */
-    fwd_leaf: Option<IterMutPairVec<'a, K, V>>,
-    bck_leaf: Option<IterMutPairVec<'a, K, V>>,
+    fwd_leaf: IterMutPairVec<'a, K, V>,
+    bck_leaf: IterMutPairVec<'a, K, V>,
     fwd_stk: StkVec<StkMut<'a, K, V>>,
     bck_stk: StkVec<StkMut<'a, K, V>>,
 }
 impl<'a, K, V> RangeMut<'a, K, V> {
     fn new() -> Self {
         Self {
-            fwd_leaf: None,
-            bck_leaf: None,
+            fwd_leaf: IterMutPairVec::default(),
+            bck_leaf: IterMutPairVec::default(),
             fwd_stk: StkVec::new(),
             bck_stk: StkVec::new(),
         }
@@ -1477,7 +1460,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     fn push_tree(&mut self, tree: &'a mut Tree<K, V>, both: bool) {
         match tree {
             Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.iter_mut());
+                self.fwd_leaf = leaf.iter_mut();
             }
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter_mut(), nl.c.iter_mut());
@@ -1503,7 +1486,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         match tree {
             Tree::L(leaf) => {
                 let (x, y) = leaf.get_xy(range);
-                self.fwd_leaf = Some(leaf.0.range_mut(x, y));
+                self.fwd_leaf = leaf.0.range_mut(x, y);
             }
             Tree::NL(nl) => {
                 let (x, y) = nl.v.get_xy(range);
@@ -1532,7 +1515,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         match tree {
             Tree::L(leaf) => {
                 let (x, y) = leaf.get_xy(range);
-                self.bck_leaf = Some(leaf.0.range_mut(x, y));
+                self.bck_leaf = leaf.0.range_mut(x, y);
             }
             Tree::NL(nl) => {
                 let (x, y) = nl.v.get_xy(range);
@@ -1547,7 +1530,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     }
     fn push_tree_back(&mut self, tree: &'a mut Tree<K, V>) {
         match tree {
-            Tree::L(leaf) => self.bck_leaf = Some(leaf.iter_mut()),
+            Tree::L(leaf) => self.bck_leaf = leaf.iter_mut(),
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter_mut(), nl.c.iter_mut());
                 let ct_back = c.next_back();
@@ -1578,6 +1561,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
         }
         StealResultMut::Nothing
     }
+    #[cold]
     fn next_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
             if let Some(s) = self.fwd_stk.last_mut() {
@@ -1593,19 +1577,13 @@ impl<'a, K, V> RangeMut<'a, K, V> {
                     StealResultMut::KV(kv) => return Some(kv),
                     StealResultMut::CT(ct) => {
                         self.push_tree(ct, false);
-                        if let Some(f) = &mut self.fwd_leaf {
-                            if let Some(x) = f.next() {
-                                return Some(x);
-                            }
-                            self.fwd_leaf = None;
+                        if let Some(x) = self.fwd_leaf.next() {
+                            return Some(x);
                         }
                     }
                     StealResultMut::Nothing => {
-                        if let Some(f) = &mut self.bck_leaf {
-                            if let Some(x) = f.next() {
-                                return Some(x);
-                            }
-                            self.bck_leaf = None;
+                        if let Some(x) = self.bck_leaf.next() {
+                            return Some(x);
                         }
                         return None;
                     }
@@ -1613,6 +1591,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
             }
         }
     }
+    #[cold]
     fn next_back_inner(&mut self) -> Option<(&'a K, &'a mut V)> {
         loop {
             if let Some(s) = self.bck_stk.last_mut() {
@@ -1628,19 +1607,13 @@ impl<'a, K, V> RangeMut<'a, K, V> {
                     StealResultMut::KV(kv) => return Some(kv),
                     StealResultMut::CT(ct) => {
                         self.push_tree_back(ct);
-                        if let Some(f) = &mut self.bck_leaf {
-                            if let Some(x) = f.next_back() {
-                                return Some(x);
-                            }
-                            self.bck_leaf = None;
+                        if let Some(x) = self.bck_leaf.next_back() {
+                            return Some(x);
                         }
                     }
                     StealResultMut::Nothing => {
-                        if let Some(f) = &mut self.fwd_leaf {
-                            if let Some(x) = f.next_back() {
-                                return Some(x);
-                            }
-                            self.fwd_leaf = None;
+                        if let Some(x) = self.fwd_leaf.next_back() {
+                            return Some(x);
                         }
                         return None;
                     }
@@ -1651,25 +1624,17 @@ impl<'a, K, V> RangeMut<'a, K, V> {
 }
 impl<'a, K, V> Iterator for RangeMut<'a, K, V> {
     type Item = (&'a K, &'a mut V);
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(f) = &mut self.fwd_leaf {
-            if let Some(x) = f.next() {
-                return Some(x);
-            }
-            self.fwd_leaf = None;
+        if let Some(x) = self.fwd_leaf.next() {
+            return Some(x);
         }
         self.next_inner()
     }
 }
 impl<'a, K, V> DoubleEndedIterator for RangeMut<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        if let Some(f) = &mut self.bck_leaf {
-            if let Some(x) = f.next_back() {
-                return Some(x);
-            }
-            self.bck_leaf = None;
+        if let Some(x) = self.bck_leaf.next_back() {
+            return Some(x);
         }
         self.next_back_inner()
     }
@@ -1701,7 +1666,6 @@ impl<K, V> IntoIter<K, V> {
 }
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.inner.next()?;
         self.len -= 1;
@@ -1712,7 +1676,6 @@ impl<K, V> Iterator for IntoIter<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoIter<K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let result = self.inner.next_back()?;
         self.len -= 1;
@@ -1732,23 +1695,23 @@ struct StkCon<K, V> {
 }
 
 struct IntoIterInner<K, V> {
-    fwd_leaf: Option<IntoIterPairVec<K, V>>,
-    bck_leaf: Option<IntoIterPairVec<K, V>>,
+    fwd_leaf: IntoIterPairVec<K, V>,
+    bck_leaf: IntoIterPairVec<K, V>,
     fwd_stk: StkVec<StkCon<K, V>>,
     bck_stk: StkVec<StkCon<K, V>>,
 }
 impl<K, V> IntoIterInner<K, V> {
     fn new() -> Self {
         Self {
-            fwd_leaf: None,
-            bck_leaf: None,
+            fwd_leaf: IntoIterPairVec::default(),
+            bck_leaf: IntoIterPairVec::default(),
             fwd_stk: StkVec::new(),
             bck_stk: StkVec::new(),
         }
     }
     fn push_tree(&mut self, tree: Tree<K, V>, both: bool) {
         match tree {
-            Tree::L(leaf) => self.fwd_leaf = Some(leaf.into_iter()),
+            Tree::L(leaf) => self.fwd_leaf = leaf.into_iter(),
             Tree::NL(nl) => {
                 let (v, mut c) = nl.into_iter();
                 let ct = c.next();
@@ -1766,7 +1729,7 @@ impl<K, V> IntoIterInner<K, V> {
     }
     fn push_tree_back(&mut self, tree: Tree<K, V>) {
         match tree {
-            Tree::L(leaf) => self.bck_leaf = Some(leaf.into_iter()),
+            Tree::L(leaf) => self.bck_leaf = leaf.into_iter(),
             Tree::NL(nl) => {
                 let (v, mut c) = nl.into_iter();
                 let ct_back = c.next_back();
@@ -1797,6 +1760,7 @@ impl<K, V> IntoIterInner<K, V> {
         }
         StealResultCon::Nothing
     }
+    #[cold]
     fn next_inner(&mut self) -> Option<(K, V)> {
         loop {
             if let Some(s) = self.fwd_stk.last_mut() {
@@ -1812,19 +1776,13 @@ impl<K, V> IntoIterInner<K, V> {
                     StealResultCon::KV(kv) => return Some(kv),
                     StealResultCon::CT(ct) => {
                         self.push_tree(ct, false);
-                        if let Some(f) = &mut self.fwd_leaf {
-                            if let Some(x) = f.next() {
-                                return Some(x);
-                            }
+                        if let Some(x) = self.fwd_leaf.next() {
+                            return Some(x);
                         }
-                        self.fwd_leaf = None;
                     }
                     StealResultCon::Nothing => {
-                        if let Some(f) = &mut self.bck_leaf {
-                            if let Some(x) = f.next() {
-                                return Some(x);
-                            }
-                            self.bck_leaf = None;
+                        if let Some(x) = self.bck_leaf.next() {
+                            return Some(x);
                         }
                         return None;
                     }
@@ -1832,6 +1790,7 @@ impl<K, V> IntoIterInner<K, V> {
             }
         }
     }
+    #[cold]
     fn next_back_inner(&mut self) -> Option<(K, V)> {
         loop {
             if let Some(s) = self.bck_stk.last_mut() {
@@ -1847,19 +1806,13 @@ impl<K, V> IntoIterInner<K, V> {
                     StealResultCon::KV(kv) => return Some(kv),
                     StealResultCon::CT(ct) => {
                         self.push_tree_back(ct);
-                        if let Some(f) = &mut self.bck_leaf {
-                            if let Some(x) = f.next_back() {
-                                return Some(x);
-                            }
-                            self.bck_leaf = None;
+                        if let Some(x) = self.bck_leaf.next_back() {
+                            return Some(x);
                         }
                     }
                     StealResultCon::Nothing => {
-                        if let Some(f) = &mut self.fwd_leaf {
-                            if let Some(x) = f.next_back() {
-                                return Some(x);
-                            }
-                            self.fwd_leaf = None;
+                        if let Some(x) = self.fwd_leaf.next_back() {
+                            return Some(x);
                         }
                         return None;
                     }
@@ -1870,25 +1823,17 @@ impl<K, V> IntoIterInner<K, V> {
 }
 impl<K, V> Iterator for IntoIterInner<K, V> {
     type Item = (K, V);
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(f) = &mut self.fwd_leaf {
-            if let Some(x) = f.next() {
-                return Some(x);
-            }
-            self.fwd_leaf = None;
+        if let Some(x) = self.fwd_leaf.next() {
+            return Some(x);
         }
         self.next_inner()
     }
 }
 impl<K, V> DoubleEndedIterator for IntoIterInner<K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        if let Some(f) = &mut self.bck_leaf {
-            if let Some(x) = f.next_back() {
-                return Some(x);
-            }
-            self.bck_leaf = None;
+        if let Some(x) = self.bck_leaf.next_back() {
+            return Some(x);
         }
         self.next_back_inner()
     }
@@ -1910,7 +1855,6 @@ pub struct Iter<'a, K, V> {
 }
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
     type Item = (&'a K, &'a V);
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1929,7 +1873,6 @@ impl<'a, K, V> ExactSizeIterator for Iter<'a, K, V> {
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Iter<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             None
@@ -1950,16 +1893,16 @@ struct Stk<'a, K, V> {
 /// Iterator returned by [`BTreeMap::range`].
 #[derive(Clone, Debug, Default)]
 pub struct Range<'a, K, V> {
-    fwd_leaf: Option<IterPairVec<'a, K, V>>,
-    bck_leaf: Option<IterPairVec<'a, K, V>>,
+    fwd_leaf: IterPairVec<'a, K, V>,
+    bck_leaf: IterPairVec<'a, K, V>,
     fwd_stk: StkVec<Stk<'a, K, V>>,
     bck_stk: StkVec<Stk<'a, K, V>>,
 }
 impl<'a, K, V> Range<'a, K, V> {
     fn new() -> Self {
         Self {
-            fwd_leaf: None,
-            bck_leaf: None,
+            fwd_leaf: IterPairVec::default(),
+            bck_leaf: IterPairVec::default(),
             fwd_stk: StkVec::new(),
             bck_stk: StkVec::new(),
         }
@@ -1967,7 +1910,7 @@ impl<'a, K, V> Range<'a, K, V> {
     fn push_tree(&mut self, tree: &'a Tree<K, V>, both: bool) {
         match tree {
             Tree::L(leaf) => {
-                self.fwd_leaf = Some(leaf.0.iter());
+                self.fwd_leaf = leaf.0.iter();
             }
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter(), nl.c.iter());
@@ -1993,7 +1936,7 @@ impl<'a, K, V> Range<'a, K, V> {
         match tree {
             Tree::L(leaf) => {
                 let (x, y) = leaf.get_xy(range);
-                self.fwd_leaf = Some(leaf.0.range(x, y));
+                self.fwd_leaf = leaf.0.range(x, y);
             }
             Tree::NL(nl) => {
                 let (x, y) = nl.v.get_xy(range);
@@ -2022,7 +1965,7 @@ impl<'a, K, V> Range<'a, K, V> {
         match tree {
             Tree::L(leaf) => {
                 let (x, y) = leaf.get_xy(range);
-                self.bck_leaf = Some(leaf.0.range(x, y));
+                self.bck_leaf = leaf.0.range(x, y);
             }
             Tree::NL(nl) => {
                 let (x, y) = nl.v.get_xy(range);
@@ -2038,7 +1981,7 @@ impl<'a, K, V> Range<'a, K, V> {
     fn push_tree_back(&mut self, tree: &'a Tree<K, V>) {
         match tree {
             Tree::L(leaf) => {
-                self.bck_leaf = Some(leaf.iter());
+                self.bck_leaf = leaf.iter();
             }
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter(), nl.c.iter());
@@ -2070,7 +2013,7 @@ impl<'a, K, V> Range<'a, K, V> {
         }
         StealResult::Nothing
     }
-
+    #[cold]
     fn next_inner(&mut self) -> Option<(&'a K, &'a V)> {
         loop {
             if let Some(s) = self.fwd_stk.last_mut() {
@@ -2086,19 +2029,13 @@ impl<'a, K, V> Range<'a, K, V> {
                     StealResult::KV(kv) => return Some(kv),
                     StealResult::CT(ct) => {
                         self.push_tree(ct, false);
-                        if let Some(f) = &mut self.fwd_leaf {
-                            if let Some(x) = f.next() {
-                                return Some(x);
-                            }
-                            self.fwd_leaf = None;
+                        if let Some(x) = self.fwd_leaf.next() {
+                            return Some(x);
                         }
                     }
                     StealResult::Nothing => {
-                        if let Some(f) = &mut self.bck_leaf {
-                            if let Some(x) = f.next() {
-                                return Some(x);
-                            }
-                            self.bck_leaf = None;
+                        if let Some(x) = self.bck_leaf.next() {
+                            return Some(x);
                         }
                         return None;
                     }
@@ -2106,7 +2043,7 @@ impl<'a, K, V> Range<'a, K, V> {
             }
         }
     }
-
+    #[cold]
     fn next_back_inner(&mut self) -> Option<(&'a K, &'a V)> {
         loop {
             if let Some(s) = self.bck_stk.last_mut() {
@@ -2122,19 +2059,13 @@ impl<'a, K, V> Range<'a, K, V> {
                     StealResult::KV(kv) => return Some(kv),
                     StealResult::CT(ct) => {
                         self.push_tree_back(ct);
-                        if let Some(f) = &mut self.bck_leaf {
-                            if let Some(x) = f.next_back() {
-                                return Some(x);
-                            }
-                            self.bck_leaf = None;
+                        if let Some(x) = self.bck_leaf.next_back() {
+                            return Some(x);
                         }
                     }
                     StealResult::Nothing => {
-                        if let Some(f) = &mut self.fwd_leaf {
-                            if let Some(x) = f.next_back() {
-                                return Some(x);
-                            }
-                            self.fwd_leaf = None;
+                        if let Some(x) = self.fwd_leaf.next_back() {
+                            return Some(x);
                         }
                         return None;
                     }
@@ -2145,25 +2076,17 @@ impl<'a, K, V> Range<'a, K, V> {
 }
 impl<'a, K, V> Iterator for Range<'a, K, V> {
     type Item = (&'a K, &'a V);
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(f) = &mut self.fwd_leaf {
-            if let Some(x) = f.next() {
-                return Some(x);
-            }
-            self.fwd_leaf = None;
+        if let Some(x) = self.fwd_leaf.next() {
+            return Some(x);
         }
         self.next_inner()
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Range<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        if let Some(f) = &mut self.bck_leaf {
-            if let Some(x) = f.next_back() {
-                return Some(x);
-            }
-            self.bck_leaf = None;
+        if let Some(x) = self.bck_leaf.next_back() {
+            return Some(x);
         }
         self.next_back_inner()
     }
@@ -2174,7 +2097,6 @@ impl<'a, K, V> FusedIterator for Range<'a, K, V> {}
 pub struct IntoKeys<K, V>(IntoIter<K, V>);
 impl<K, V> Iterator for IntoKeys<K, V> {
     type Item = K;
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         Some(self.0.next()?.0)
     }
@@ -2183,7 +2105,6 @@ impl<K, V> Iterator for IntoKeys<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoKeys<K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         Some(self.0.next_back()?.0)
     }
@@ -2199,7 +2120,6 @@ impl<K, V> FusedIterator for IntoKeys<K, V> {}
 pub struct IntoValues<K, V>(IntoIter<K, V>);
 impl<K, V> Iterator for IntoValues<K, V> {
     type Item = V;
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         Some(self.0.next()?.1)
     }
@@ -2208,7 +2128,6 @@ impl<K, V> Iterator for IntoValues<K, V> {
     }
 }
 impl<K, V> DoubleEndedIterator for IntoValues<K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         Some(self.0.next_back()?.1)
     }
@@ -2227,13 +2146,11 @@ impl<K, V> FusedIterator for IntoValues<K, V> {}
 pub struct ValuesMut<'a, K, V>(IterMut<'a, K, V>);
 impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
     type Item = &'a mut V;
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|(_, v)| v)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for ValuesMut<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(_, v)| v)
     }
@@ -2250,13 +2167,11 @@ impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> {}
 pub struct Values<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Values<'a, K, V> {
     type Item = &'a V;
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|(_, v)| v)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Values<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(_, v)| v)
     }
@@ -2273,13 +2188,11 @@ impl<'a, K, V> FusedIterator for Values<'a, K, V> {}
 pub struct Keys<'a, K, V>(Iter<'a, K, V>);
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
     type Item = &'a K;
-    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|(k, _)| k)
     }
 }
 impl<'a, K, V> DoubleEndedIterator for Keys<'a, K, V> {
-    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back().map(|(k, _)| k)
     }
@@ -2485,65 +2398,79 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
         }
     }
 
-    fn push_lower<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    fn push_lower<Q>(&mut self, mut tree: &mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = leaf.get_lower(bound);
-                self.leaf = Some(leaf);
-            }
-            Tree::NL(nl) => {
-                let ix = nl.v.get_lower(bound);
-                self.stack.push((nl, ix));
-                self.push_lower(nl.c.ixm(ix), bound);
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.index = leaf.get_lower(bound);
+                    self.leaf = Some(leaf);
+                    break;
+                }
+                Tree::NL(nl) => {
+                    let ix = nl.v.get_lower(bound);
+                    self.stack.push((nl, ix));
+                    tree = nl.c.ixm(ix);
+                }
             }
         }
     }
 
-    fn push_upper<Q>(&mut self, tree: &mut Tree<K, V>, bound: Bound<&Q>)
+    fn push_upper<Q>(&mut self, mut tree: &mut Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = leaf.get_upper(bound);
-                self.leaf = Some(leaf);
-            }
-            Tree::NL(nl) => {
-                let ix = nl.v.get_upper(bound);
-                self.stack.push((nl, ix));
-                self.push_upper(nl.c.ixm(ix), bound);
-            }
-        }
-    }
-
-    fn push(&mut self, tsp: usize, tree: &mut Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = 0;
-                self.leaf = Some(leaf);
-            }
-            Tree::NL(nl) => {
-                self.stack[tsp] = (nl, 0);
-                self.push(tsp + 1, nl.c.ixm(0));
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.index = leaf.get_upper(bound);
+                    self.leaf = Some(leaf);
+                    break;
+                }
+                Tree::NL(nl) => {
+                    let ix = nl.v.get_upper(bound);
+                    self.stack.push((nl, ix));
+                    tree = nl.c.ixm(ix);
+                }
             }
         }
     }
 
-    fn push_back(&mut self, tsp: usize, tree: &mut Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.index = leaf.0.len();
-                self.leaf = Some(leaf);
+    fn push(&mut self, mut tsp: usize, mut tree: &mut Tree<K, V>) {
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.index = 0;
+                    self.leaf = Some(leaf);
+                    break;
+                }
+                Tree::NL(nl) => {
+                    self.stack[tsp] = (nl, 0);
+                    tree = nl.c.ixm(0);
+                    tsp += 1;
+                }
             }
-            Tree::NL(nl) => {
-                let ix = nl.v.0.len();
-                self.stack[tsp] = (nl, ix);
-                self.push_back(tsp + 1, nl.c.ixm(ix));
+        }
+    }
+
+    fn push_back(&mut self, mut tsp: usize, mut tree: &mut Tree<K, V>) {
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.index = leaf.0.len();
+                    self.leaf = Some(leaf);
+                    break;
+                }
+                Tree::NL(nl) => {
+                    let ix = nl.v.0.len();
+                    self.stack[tsp] = (nl, ix);
+                    tree = nl.c.ixm(ix);
+                    tsp += 1;
+                }
             }
         }
     }
@@ -2829,69 +2756,79 @@ impl<'a, K, V> Cursor<'a, K, V> {
         s
     }
 
-    fn push_lower<Q>(&mut self, tree: &'a Tree<K, V>, bound: Bound<&Q>)
+    fn push_lower<Q>(&mut self, mut tree: &'a Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = leaf.get_lower(bound);
-            }
-            Tree::NL(nl) => {
-                let ix = nl.v.get_lower(bound);
-                self.stack.push((nl, ix));
-                let c = &nl.c[ix];
-                self.push_lower(c, bound);
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = leaf.get_lower(bound);
+                    break;
+                }
+                Tree::NL(nl) => {
+                    let ix = nl.v.get_lower(bound);
+                    self.stack.push((nl, ix));
+                    tree = &nl.c.ix(ix);
+                }
             }
         }
     }
 
-    fn push_upper<Q>(&mut self, tree: &'a Tree<K, V>, bound: Bound<&Q>)
+    fn push_upper<Q>(&mut self, mut tree: &'a Tree<K, V>, bound: Bound<&Q>)
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = leaf.get_upper(bound);
-            }
-            Tree::NL(nl) => {
-                let ix = nl.v.get_upper(bound);
-                self.stack.push((nl, ix));
-                let c = &nl.c[ix];
-                self.push_upper(c, bound);
-            }
-        }
-    }
-
-    fn push(&mut self, tsp: usize, tree: &Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = 0;
-            }
-            Tree::NL(nl) => {
-                self.stack[tsp] = (nl, 0);
-                let c = &nl.c[0];
-                self.push(tsp + 1, c);
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = leaf.get_upper(bound);
+                    break;
+                }
+                Tree::NL(nl) => {
+                    let ix = nl.v.get_upper(bound);
+                    self.stack.push((nl, ix));
+                    tree = &nl.c.ix(ix);
+                }
             }
         }
     }
 
-    fn push_back(&mut self, tsp: usize, tree: &Tree<K, V>) {
-        match tree {
-            Tree::L(leaf) => {
-                self.leaf = Some(leaf);
-                self.index = leaf.0.len();
+    fn push(&mut self, mut tsp: usize, mut tree: &Tree<K, V>) {
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = 0;
+                    break;
+                }
+                Tree::NL(nl) => {
+                    self.stack[tsp] = (nl, 0);
+                    tree = &nl.c.ix(0);
+                    tsp += 1;
+                }
             }
-            Tree::NL(nl) => {
-                let ix = nl.v.0.len();
-                self.stack[tsp] = (nl, ix);
-                let c = &nl.c[ix];
-                self.push_back(tsp + 1, c);
+        }
+    }
+
+    fn push_back(&mut self, mut tsp: usize, mut tree: &Tree<K, V>) {
+        loop {
+            match tree {
+                Tree::L(leaf) => {
+                    self.leaf = Some(leaf);
+                    self.index = leaf.0.len();
+                    break;
+                }
+                Tree::NL(nl) => {
+                    let ix = nl.v.0.len();
+                    self.stack[tsp] = (nl, ix);
+                    tree = &nl.c.ix(ix);
+                    tsp += 1;
+                }
             }
         }
     }
@@ -3012,5 +2949,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-//#[cfg(test)]
-//mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
