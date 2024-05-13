@@ -2771,7 +2771,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 Tree::NL(nl) => {
                     let ix = nl.v.get_lower(bound);
                     self.stack.push((nl, ix));
-                    tree = &nl.c.ix(ix);
+                    tree = nl.c.ix(ix);
                 }
             }
         }
@@ -2792,7 +2792,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 Tree::NL(nl) => {
                     let ix = nl.v.get_upper(bound);
                     self.stack.push((nl, ix));
-                    tree = &nl.c.ix(ix);
+                    tree = nl.c.ix(ix);
                 }
             }
         }
@@ -2808,7 +2808,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 }
                 Tree::NL(nl) => {
                     self.stack[tsp] = (nl, 0);
-                    tree = &nl.c.ix(0);
+                    tree = nl.c.ix(0);
                     tsp += 1;
                 }
             }
@@ -2826,7 +2826,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
                 Tree::NL(nl) => {
                     let ix = nl.v.0.len();
                     self.stack[tsp] = (nl, ix);
-                    tree = &nl.c.ix(ix);
+                    tree = nl.c.ix(ix);
                     tsp += 1;
                 }
             }
