@@ -734,7 +734,7 @@ impl<K, V> PairVec<K, V> {
     pub fn into_iter(self) -> IntoIterPairVec<K, V> {
         let ixb = self.len();
         IntoIterPairVec {
-            v: Some(self),
+            v: self,
             ix: 0,
             ixb,
         }
@@ -882,14 +882,14 @@ impl<'a, K, V> DoubleEndedIterator for IterMutPairVec<'a, K, V> {
 
 #[derive(Debug)]
 pub struct IntoIterPairVec<K, V> {
-    v: Option<PairVec<K, V>>,
+    v: PairVec<K, V>,
     ix: usize,
     ixb: usize,
 }
 impl<K, V> Default for IntoIterPairVec<K, V> {
     fn default() -> Self {
         Self {
-            v: None,
+            v: PairVec::default(),
             ix: 0,
             ixb: 0,
         }
@@ -908,8 +908,7 @@ impl<K, V> Iterator for IntoIterPairVec<K, V> {
             if self.ix == self.ixb {
                 return None;
             }
-            let v = self.v.as_mut().unwrap();
-            let (kp, vp) = v.ixmp(self.ix);
+            let (kp, vp) = self.v.ixmp(self.ix);
             self.ix += 1;
             Some((kp.read(), vp.read()))
         }
@@ -922,9 +921,8 @@ impl<K, V> DoubleEndedIterator for IntoIterPairVec<K, V> {
             if self.ix == self.ixb {
                 return None;
             }
-            let v = self.v.as_mut().unwrap();
             self.ixb -= 1;
-            let (kp, vp) = v.ixmp(self.ixb);
+            let (kp, vp) = self.v.ixmp(self.ixb);
             Some((kp.read(), vp.read()))
         }
     }
@@ -934,8 +932,6 @@ impl<K, V> Drop for IntoIterPairVec<K, V> {
         while self.ix != self.ixb {
             self.next();
         }
-        if let Some(v) = &mut self.v {
-            v.len = 0;
-        }
+        self.v.len = 0;
     }
 }
