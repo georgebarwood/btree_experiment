@@ -1459,9 +1459,7 @@ impl<'a, K, V> RangeMut<'a, K, V> {
     }
     fn push_tree(&mut self, tree: &'a mut Tree<K, V>, both: bool) {
         match tree {
-            Tree::L(leaf) => {
-                self.fwd_leaf = leaf.iter_mut();
-            }
+            Tree::L(leaf) => self.fwd_leaf = leaf.iter_mut(),
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter_mut(), nl.c.iter_mut());
                 let ct = c.next();
@@ -1909,9 +1907,7 @@ impl<'a, K, V> Range<'a, K, V> {
     }
     fn push_tree(&mut self, tree: &'a Tree<K, V>, both: bool) {
         match tree {
-            Tree::L(leaf) => {
-                self.fwd_leaf = leaf.0.iter();
-            }
+            Tree::L(leaf) => self.fwd_leaf = leaf.0.iter(),
             Tree::NL(nl) => {
                 let (v, mut c) = (nl.v.0.iter(), nl.c.iter());
                 let ct = c.next();

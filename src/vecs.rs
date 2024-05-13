@@ -631,12 +631,8 @@ impl<K, V> PairVec<K, V> {
                 let m = (i + j) >> 1;
                 match (*p.add(m)).borrow().cmp(key) {
                     Ordering::Equal => return Ok(m),
-                    Ordering::Less => {
-                        i = m + 1;
-                    }
-                    Ordering::Greater => {
-                        j = m;
-                    }
+                    Ordering::Less => i = m + 1,
+                    Ordering::Greater => j = m,
                 }
             }
             Err(i)
