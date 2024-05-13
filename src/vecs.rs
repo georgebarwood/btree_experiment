@@ -858,7 +858,7 @@ impl<'a, K, V> Iterator for IterMutPairVec<'a, K, V> {
             if self.ix == self.ixb {
                 return None;
             }
-            let v = self.v.as_mut().unwrap();
+            let v = self.v.as_mut().unwrap_unchecked();
             let (kp, vp) = v.ixmp(self.ix);
             self.ix += 1;
             Some((&mut *kp, &mut *vp))
@@ -873,7 +873,7 @@ impl<'a, K, V> DoubleEndedIterator for IterMutPairVec<'a, K, V> {
                 return None;
             }
             self.ixb -= 1;
-            let v = self.v.as_mut().unwrap();
+            let v = self.v.as_mut().unwrap_unchecked();
             let (kp, vp) = v.ixmp(self.ixb);
             Some((&mut *kp, &mut *vp))
         }
