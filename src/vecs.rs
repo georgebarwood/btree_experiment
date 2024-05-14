@@ -158,7 +158,7 @@ macro_rules! safe_assert {
 }
 
 /// Vec with limited capacity that allocates incrementally and trims when split.
-pub(crate) struct ShortVec<T> {
+pub struct ShortVec<T> {
     len: u16,   // Current length.
     alloc: u16, // Currently allocated.
     cap: u16,   // Maximum capacity ( never allocate more than this ).
@@ -358,18 +358,18 @@ where
 
 impl<T> IntoIterator for ShortVec<T> {
     type Item = T;
-    type IntoIter = ShortVecIter<T>;
+    type IntoIter = IntoIterShortVec<T>;
     fn into_iter(self) -> Self::IntoIter {
-        ShortVecIter { start: 0, v: self }
+        IntoIterShortVec { start: 0, v: self }
     }
 }
 
-pub(crate) struct ShortVecIter<T> {
+pub struct IntoIterShortVec<T> {
     start: usize,
     v: ShortVec<T>,
 }
 
-impl<T> Iterator for ShortVecIter<T> {
+impl<T> Iterator for IntoIterShortVec<T> {
     type Item = T;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -382,7 +382,7 @@ impl<T> Iterator for ShortVecIter<T> {
         }
     }
 }
-impl<T> DoubleEndedIterator for ShortVecIter<T> {
+impl<T> DoubleEndedIterator for IntoIterShortVec<T> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start == self.v.len() {
@@ -393,7 +393,7 @@ impl<T> DoubleEndedIterator for ShortVecIter<T> {
         }
     }
 }
-impl<T> Drop for ShortVecIter<T> {
+impl<T> Drop for IntoIterShortVec<T> {
     fn drop(&mut self) {
         while self.len() > 0 {
             self.next();
@@ -401,7 +401,7 @@ impl<T> Drop for ShortVecIter<T> {
         self.v.len = 0;
     }
 }
-impl<T> ExactSizeIterator for ShortVecIter<T> {
+impl<T> ExactSizeIterator for IntoIterShortVec<T> {
     fn len(&self) -> usize {
         self.v.len() - self.start
     }

@@ -23,6 +23,35 @@
 //! - `serde` : enables serialisation of [`BTreeMap`] via serde crate.
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
+/// ...
+pub trait AllocTuning
+{
+    /// Get the amount by which to increase allocation when a vec is full.
+    fn alloc_unit()-> u8
+    {
+        return 8;
+    }
+    /// Get the B value ( BTree branch number )
+    fn branch() -> u16
+    {
+        return 64;
+    }
+}
+    
+/// ...
+pub struct DefaultAllocTuning{}
+impl AllocTuning for DefaultAllocTuning{}
+
+/// ...
+pub struct GTest<A: AllocTuning=DefaultAllocTuning>
+{
+   /// ...
+   pub a: A,
+}
+
+const DEFAULT_BRANCH: u16 = 64;
+const DEFAULT_ALLOC_UNIT: u8 = 8;
+
 /// `BTreeMap` similar to [`std::collections::BTreeMap`].
 ///
 /// General guide to implementation:
@@ -46,9 +75,6 @@ impl<K, V> Default for BTreeMap<K, V> {
         Self::new()
     }
 }
-
-const DEFAULT_BRANCH: u16 = 64;
-const DEFAULT_ALLOC_UNIT: u8 = 8;
 
 impl<K, V> BTreeMap<K, V> {
     #[cfg(test)]
@@ -1092,7 +1118,7 @@ impl<K, V> NonLeafInner<K, V> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn into_iter(mut self) -> (IntoIterPairVec<K, V>, ShortVecIter<Tree<K, V>>) {
+    fn into_iter(mut self) -> (IntoIterPairVec<K, V>, IntoIterShortVec<Tree<K, V>>) {
         let v = mem::take(&mut self.v);
         let c = mem::take(&mut self.c);
         (v.into_iter(), c.into_iter())
@@ -1689,7 +1715,7 @@ impl<K, V> FusedIterator for IntoIter<K, V> {}
 
 struct StkCon<K, V> {
     v: IntoIterPairVec<K, V>,
-    c: ShortVecIter<Tree<K, V>>,
+    c: IntoIterShortVec<Tree<K, V>>,
 }
 
 struct IntoIterInner<K, V> {
@@ -2945,5 +2971,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-#[cfg(test)]
-mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+//#[cfg(test)]
+//mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
