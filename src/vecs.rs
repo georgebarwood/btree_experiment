@@ -159,8 +159,9 @@ macro_rules! safe_assert {
 
 /// Vec with manual allocation.
 pub struct ShortVec<T> {
-    len: u16,   // Current length.
-    alloc: u16, // Currently allocated.
+    len: u16, // Current length.
+    /// Currently allocated.
+    pub alloc: u16,
     v: BasicVec<T>,
 }
 
@@ -251,7 +252,7 @@ impl<T> ShortVec<T> {
         safe_assert!(at < self.len());
         let len = self.len() - at;
         let mut result = Self::new();
-        result.set_alloc(len + 1 + r * au);
+        result.set_alloc(len + r * au);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
         }
@@ -386,8 +387,9 @@ use std::marker::PhantomData;
 /// Vector of (key,value) pairs, keys stored separately from values for cache efficient search.
 pub struct PairVec<K, V> {
     p: NonNull<u8>,
-    len: u16,   // Current length
-    alloc: u16, // Allocated
+    len: u16, // Current length
+    // Currently allocated.
+    pub alloc: u16,
     _pd: PhantomData<(K, V)>,
 }
 
@@ -505,7 +507,7 @@ impl<K, V> PairVec<K, V> {
 
     pub fn insert(&mut self, at: usize, (key, value): (K, V)) {
         safe_assert!(at <= self.len());
-        assert!(self.len < self.alloc, "{} {}", self.len, self.alloc);
+        safe_assert!(self.len < self.alloc);
         unsafe {
             let n = self.len() - at;
             let (kp, vp) = self.ixmp(at);

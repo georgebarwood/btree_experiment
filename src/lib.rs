@@ -1139,6 +1139,8 @@ impl<K, V> NonLeafInner<K, V> {
             v: Leaf(right),
             c: self.c.split_off(b + 1, r, au),
         });
+        debug_assert!(right.v.0.alloc + 1 == right.c.alloc);
+        debug_assert!(self.v.0.alloc + 1 == self.c.alloc);
         (med, right)
     }
 
