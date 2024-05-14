@@ -247,16 +247,17 @@ impl<T> ShortVec<T> {
         }
     }
 
-    pub fn split_off(&mut self, at: usize, extra: usize) -> Self {
+    pub fn split_off(&mut self, at: usize, r: usize, au: usize) -> Self {
         safe_assert!(at < self.len());
         let len = self.len() - at;
         let mut result = Self::new();
-        result.set_alloc(len + extra);
+        result.set_alloc(len + 1 + r * au);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
         }
         result.len = len as u16;
         self.len -= len as u16;
+        self.set_alloc(self.len() + 1 + (1 - r) * au);
         result
     }
 
@@ -485,11 +486,11 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    pub fn split_off_ex(&mut self, at: usize, ex: usize) -> Self {
+    pub fn split_off(&mut self, at: usize, r: usize, au: usize) -> Self {
         safe_assert!(at <= self.len());
         let len = self.len() - at;
         let mut result = Self::new();
-        result.set_alloc(len + ex);
+        result.set_alloc(len + r * au);
         unsafe {
             let (kf, vf) = self.ixmp(at);
             let (kt, vt) = result.ixmp(0);
@@ -498,6 +499,7 @@ impl<K, V> PairVec<K, V> {
         }
         result.len = len as u16;
         self.len -= len as u16;
+        self.set_alloc(self.len() + (1 - r) * au);
         result
     }
 

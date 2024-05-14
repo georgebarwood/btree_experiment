@@ -42,10 +42,15 @@ pub trait AllocTuning: Clone + Default {
     fn branch(&self) -> usize;
     /// ...
     fn full_action(&self, len: usize) -> FullAction {
-        if len >= self.branch() * 2 - 1 {
+        let lim = self.branch() * 2 - 1;
+        if len >= lim {
             FullAction::Split(len / 2)
         } else {
-            FullAction::Extend(len + self.alloc_unit())
+            let mut na = len + self.alloc_unit();
+            if na > lim {
+                na = lim
+            };
+            FullAction::Extend(na)
         }
     }
 }
@@ -994,8 +999,8 @@ impl<K, V> Leaf<K, V> {
         }
     }
 
-    fn split(&mut self, at: usize, extra: usize) -> ((K, V), PairVec<K, V>) {
-        let right = self.0.split_off_ex(at + 1, extra);
+    fn split(&mut self, at: usize, r: usize, au: usize) -> ((K, V), PairVec<K, V>) {
+        let right = self.0.split_off(at + 1, r, au);
         let med = self.0.pop().unwrap();
         (med, right)
     }
@@ -1019,7 +1024,7 @@ impl<K, V> Leaf<K, V> {
             match x.atune.full_action(self.0.len()) {
                 FullAction::Split(b) => {
                     let r = usize::from(i > b);
-                    let (med, mut right) = self.split(b, r * x.atune.alloc_unit());
+                    let (med, mut right) = self.split(b, r, x.atune.alloc_unit());
                     if r == 1 {
                         i -= b + 1;
                         right.insert(i, (key, value));
@@ -1128,11 +1133,11 @@ impl<K, V> NonLeafInner<K, V> {
         })
     }
 
-    fn split(&mut self, b: usize, extra: usize) -> ((K, V), Box<Self>) {
-        let (med, right) = self.v.split(b, extra);
+    fn split(&mut self, b: usize, r: usize, au: usize) -> ((K, V), Box<Self>) {
+        let (med, right) = self.v.split(b, r, au);
         let right = Box::new(Self {
             v: Leaf(right),
-            c: self.c.split_off(b + 1, extra),
+            c: self.c.split_off(b + 1, r, au),
         });
         (med, right)
     }
@@ -1174,7 +1179,7 @@ impl<K, V> NonLeafInner<K, V> {
                         match x.atune.full_action(self.v.0.len()) {
                             FullAction::Split(b) => {
                                 let r = usize::from(i > b);
-                                let (pmed, mut pright) = self.split(b, r * x.atune.alloc_unit());
+                                let (pmed, mut pright) = self.split(b, r, x.atune.alloc_unit());
                                 if r == 1 {
                                     i -= b + 1;
                                     pright.v.0.insert(i, med);
@@ -2591,7 +2596,7 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
                 match a.full_action((*leaf).0.len()) {
                     FullAction::Split(b) => {
                         let r = usize::from(self.index > b);
-                        let (med, right) = (*leaf).split(b, r * a.alloc_unit());
+                        let (med, right) = (*leaf).split(b, r, a.alloc_unit());
                         let right = Tree::L(Leaf(right));
                         self.index -= r * (b + 1);
                         let t = self.save_split(med, right, r);
@@ -2613,7 +2618,7 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
                     match a.full_action((*nl).v.0.len()) {
                         FullAction::Split(b) => {
                             let r = usize::from(ix > b);
-                            let (med, right) = (*nl).split(b, r * a.alloc_unit());
+                            let (med, right) = (*nl).split(b, r, a.alloc_unit());
                             ix -= r * (b + 1);
                             let t = self.save_split(med, Tree::NL(right), r);
                             nl = (*t).nonleaf();
