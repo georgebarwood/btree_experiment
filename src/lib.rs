@@ -38,9 +38,11 @@ pub enum FullAction {
 pub trait AllocTuning: Clone + Default {
     /// Get the amount by which to increase allocation when a vec is full.
     fn alloc_unit(&self) -> usize;
+
     /// Get the B value ( BTree branch number )
     fn branch(&self) -> usize;
-    /// ...
+
+    /// Determine what to do when the size of an underlying BTree vector needs to be increased.
     fn full_action(&self, len: usize) -> FullAction {
         let lim = self.branch() * 2 - 1;
         if len >= lim {
@@ -48,10 +50,15 @@ pub trait AllocTuning: Clone + Default {
         } else {
             let mut na = len + self.alloc_unit();
             if na > lim {
-                na = lim
-            };
+                na = lim;
+            }
             FullAction::Extend(na)
         }
+    }
+
+    /// Validity check. branch must be at least 6, not more than 512. alloc_unit must be greater than zero.
+    fn valid(&self) -> bool {
+        self.branch() >= 6 && self.branch() <= 512 && self.alloc_unit() > 0
     }
 }
 
@@ -118,26 +125,21 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
     #[cfg(test)]
     pub(crate) fn check(&self) {}
 
-    /// Returns a new, empty map with specified branch and allocation unit.
-    /// branch must be at least 6 and not more than 512. A good value might be 32 or 64.
-    /// allocation_unit must be at least 1.
-    /// allocation_unit specifies the amount by which the
-    /// allocation for the underlying vecs is increased when the vec is full
-    /// and needs to increase.
-    /// A smaller value will be slower due to extra re-allocations but may use less memory.
-    /// A good value might be 4 or 8.
+    /// Returns a new, empty map with specified allocation tuning.
     #[must_use]
     pub fn with_tuning(atune: A) -> Self {
-        let branch = atune.branch();
-        let allocation_unit = atune.alloc_unit();
-        assert!(branch >= 6);
-        assert!(branch <= 512);
-        assert!(allocation_unit > 0);
+        assert!(atune.valid());
         Self {
             len: 0,
             tree: Tree::new(),
             atune,
         }
+    }
+
+    /// Update the allocation tuning for the map.
+    pub fn update_tuning(&mut self, atune: A) {
+        assert!(atune.valid());
+        self.atune = atune;
     }
 
     /// Clear the map.
