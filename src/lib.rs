@@ -23,34 +23,55 @@
 //! - `serde` : enables serialisation of [`BTreeMap`] via serde crate.
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
-/// ...
-pub trait AllocTuning
-{
-    /// Get the amount by which to increase allocation when a vec is full.
-    fn alloc_unit()-> u8
-    {
-        return 8;
-    }
-    /// Get the B value ( BTree branch number )
-    fn branch() -> u16
-    {
-        return 64;
-    }
-}
-    
-/// ...
-pub struct DefaultAllocTuning{}
-impl AllocTuning for DefaultAllocTuning{}
-
-/// ...
-pub struct GTest<A: AllocTuning=DefaultAllocTuning>
-{
-   /// ...
-   pub a: A,
-}
-
 const DEFAULT_BRANCH: u16 = 64;
 const DEFAULT_ALLOC_UNIT: u8 = 8;
+
+/// ...
+pub enum FullAction {
+    ///...
+    Split(usize),
+    ///...
+    Extend(usize),
+}
+
+/// ...
+pub trait AllocTuning: Clone + Default {
+    /// Get the amount by which to increase allocation when a vec is full.
+    fn alloc_unit(&self) -> usize;
+    /// Get the B value ( BTree branch number )
+    fn branch(&self) -> usize;
+    /// ...
+    fn full_action(&self, len: usize) -> FullAction {
+        if len >= self.branch() * 2 - 1 {
+            FullAction::Split(len / 2)
+        } else {
+            FullAction::Extend(len + self.alloc_unit())
+        }
+    }
+}
+
+/// ...
+#[derive(Clone)]
+pub struct DefaultAllocTuning {
+    branch: u16,
+    alloc_unit: u8,
+}
+impl Default for DefaultAllocTuning {
+    fn default() -> Self {
+        Self {
+            branch: DEFAULT_BRANCH,
+            alloc_unit: DEFAULT_ALLOC_UNIT,
+        }
+    }
+}
+impl AllocTuning for DefaultAllocTuning {
+    fn branch(&self) -> usize {
+        self.branch as usize
+    }
+    fn alloc_unit(&self) -> usize {
+        self.alloc_unit as usize
+    }
+}
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`].
 ///
@@ -66,9 +87,13 @@ const DEFAULT_ALLOC_UNIT: u8 = 8;
 /// Roughly speaking, unsafe code is limited to the vecs module and the implementation of [`CursorMut`] and [`CursorMutKey`].
 
 #[derive(Clone)]
-pub struct BTreeMap<K, V> {
+pub struct BTreeMap<K, V, A = DefaultAllocTuning>
+where
+    A: AllocTuning,
+{
     len: usize,
     tree: Tree<K, V>,
+    atune: A,
 }
 impl<K, V> Default for BTreeMap<K, V> {
     fn default() -> Self {
@@ -77,14 +102,16 @@ impl<K, V> Default for BTreeMap<K, V> {
 }
 
 impl<K, V> BTreeMap<K, V> {
-    #[cfg(test)]
-    pub(crate) fn check(&self) {}
-
     /// Returns a new, empty map.
     #[must_use]
     pub fn new() -> Self {
-        Self::with_branch_and_unit(DEFAULT_BRANCH, DEFAULT_ALLOC_UNIT)
+        Self::with_tuning(DefaultAllocTuning::default())
     }
+}
+
+impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
+    #[cfg(test)]
+    pub(crate) fn check(&self) {}
 
     /// Returns a new, empty map with specified branch and allocation unit.
     /// branch must be at least 6 and not more than 512. A good value might be 32 or 64.
@@ -95,21 +122,23 @@ impl<K, V> BTreeMap<K, V> {
     /// A smaller value will be slower due to extra re-allocations but may use less memory.
     /// A good value might be 4 or 8.
     #[must_use]
-    pub fn with_branch_and_unit(branch: u16, allocation_unit: u8) -> Self {
+    pub fn with_tuning(atune: A) -> Self {
+        let branch = atune.branch();
+        let allocation_unit = atune.alloc_unit();
         assert!(branch >= 6);
         assert!(branch <= 512);
         assert!(allocation_unit > 0);
         Self {
             len: 0,
-            tree: Tree::new(branch, allocation_unit),
+            tree: Tree::new(),
+            atune,
         }
     }
 
     /// Clear the map.
     pub fn clear(&mut self) {
         self.len = 0;
-        let (b, au) = self.tree.bau();
-        self.tree = Tree::new(b, au);
+        self.tree = Tree::new();
     }
 
     /// Get number of key-value pairs in the map.
@@ -125,7 +154,7 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     /// Get Entry for map key.
-    pub fn entry(&mut self, key: K) -> Entry<'_, K, V>
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V, A>
     where
         K: Ord,
     {
@@ -143,7 +172,7 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     /// Get first Entry.
-    pub fn first_entry(&mut self) -> Option<OccupiedEntry<'_, K, V>>
+    pub fn first_entry(&mut self) -> Option<OccupiedEntry<'_, K, V, A>>
     where
         K: Ord,
     {
@@ -156,7 +185,7 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     /// Get last Entry.
-    pub fn last_entry(&mut self) -> Option<OccupiedEntry<'_, K, V>>
+    pub fn last_entry(&mut self) -> Option<OccupiedEntry<'_, K, V, A>>
     where
         K: Ord,
     {
@@ -177,6 +206,7 @@ impl<K, V> BTreeMap<K, V> {
         let mut x = InsertCtx {
             value: Some(value),
             split: None,
+            atune: self.atune.clone(),
         };
         self.tree.insert(key, &mut x);
         if let Some(split) = x.split {
@@ -193,7 +223,7 @@ impl<K, V> BTreeMap<K, V> {
     ///
     /// If the map already had this key present, nothing is updated, and
     /// an error containing the occupied entry and the value is returned.
-    pub fn try_insert(&mut self, key: K, value: V) -> Result<&mut V, OccupiedError<'_, K, V>>
+    pub fn try_insert(&mut self, key: K, value: V) -> Result<&mut V, OccupiedError<'_, K, V, A>>
     where
         K: Ord,
     {
@@ -303,16 +333,16 @@ impl<K, V> BTreeMap<K, V> {
     ///
     /// If a key from `other` is already present in `self`, the respective
     /// value from `self` will be overwritten with the respective value from `other`.
-    pub fn append(&mut self, other: &mut BTreeMap<K, V>)
+    pub fn append(&mut self, other: &mut BTreeMap<K, V, A>)
     where
         K: Ord,
     {
-        let (b, au) = other.tree.bau();
-        let rep = Tree::new(b, au);
+        let rep = Tree::new();
         let tree = mem::replace(&mut other.tree, rep);
         let temp = BTreeMap {
             len: other.len,
             tree,
+            atune: other.atune.clone(),
         };
         other.len = 0;
         for (k, v) in temp {
@@ -325,8 +355,9 @@ impl<K, V> BTreeMap<K, V> {
     pub fn split_off<Q: ?Sized + Ord>(&mut self, key: &Q) -> Self
     where
         K: Borrow<Q> + Ord,
+        A: Default,
     {
-        let mut map = Self::new();
+        let mut map = Self::with_tuning(self.atune.clone());
         let mut from = self.lower_bound_mut(Bound::Included(key));
         let mut to = map.lower_bound_mut(Bound::Unbounded);
         while let Some((k, v)) = from.remove_next() {
@@ -339,7 +370,7 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Returns iterator that visits all elements (key-value pairs) in ascending key order
     /// and uses a closure to determine if an element should be removed.
-    pub fn extract_if<F>(&mut self, pred: F) -> ExtractIf<'_, K, V, F>
+    pub fn extract_if<F>(&mut self, pred: F) -> ExtractIf<'_, K, V, A, F>
     where
         K: Ord,
         F: FnMut(&K, &mut V) -> bool,
@@ -418,7 +449,7 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     /// Get a cursor positioned just after bound that permits map mutation.
-    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
+    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V, A>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -427,7 +458,7 @@ impl<K, V> BTreeMap<K, V> {
     }
 
     /// Get a cursor positioned just before bound that permits map mutation.
-    pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V>
+    pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V, A>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -437,7 +468,7 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get cursor positioned just after bound.
     #[must_use]
-    pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V>
+    pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V, A>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -447,7 +478,7 @@ impl<K, V> BTreeMap<K, V> {
 
     /// Get cursor positioned just before bound.
     #[must_use]
-    pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V>
+    pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V, A>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -482,7 +513,7 @@ impl<K: Ord, V: Ord> Ord for BTreeMap<K, V> {
         self.iter().cmp(other.iter())
     }
 }
-impl<K, V> IntoIterator for BTreeMap<K, V> {
+impl<K, V, A: AllocTuning> IntoIterator for BTreeMap<K, V, A> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
 
@@ -491,14 +522,14 @@ impl<K, V> IntoIterator for BTreeMap<K, V> {
         IntoIter::new(self)
     }
 }
-impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
+impl<'a, K, V, A: AllocTuning> IntoIterator for &'a BTreeMap<K, V, A> {
     type Item = (&'a K, &'a V);
     type IntoIter = Iter<'a, K, V>;
     fn into_iter(self) -> Iter<'a, K, V> {
         self.iter()
     }
 }
-impl<'a, K, V> IntoIterator for &'a mut BTreeMap<K, V> {
+impl<'a, K, V, A: AllocTuning> IntoIterator for &'a mut BTreeMap<K, V, A> {
     type Item = (&'a K, &'a mut V);
     type IntoIter = IterMut<'a, K, V>;
     fn into_iter(self) -> IterMut<'a, K, V> {
@@ -526,7 +557,7 @@ where
         map
     }
 }
-impl<K, V> Extend<(K, V)> for BTreeMap<K, V>
+impl<K, V, A: AllocTuning> Extend<(K, V)> for BTreeMap<K, V, A>
 where
     K: Ord,
 {
@@ -539,7 +570,7 @@ where
         }
     }
 }
-impl<'a, K, V> Extend<(&'a K, &'a V)> for BTreeMap<K, V>
+impl<'a, K, V, A: AllocTuning> Extend<(&'a K, &'a V)> for BTreeMap<K, V, A>
 where
     K: Ord + Copy,
     V: Copy,
@@ -553,7 +584,7 @@ where
         }
     }
 }
-impl<K, Q, V> std::ops::Index<&Q> for BTreeMap<K, V>
+impl<K, Q, V, A: AllocTuning> std::ops::Index<&Q> for BTreeMap<K, V, A>
 where
     K: Borrow<Q> + Ord,
     Q: Ord + ?Sized,
@@ -568,7 +599,7 @@ where
         self.get(key).expect("no entry found for key")
     }
 }
-impl<K: Debug, V: Debug> Debug for BTreeMap<K, V> {
+impl<K: Debug, V: Debug, A: AllocTuning> Debug for BTreeMap<K, V, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map().entries(self.iter()).finish()
     }
@@ -582,7 +613,7 @@ use serde::{
 };
 
 #[cfg(feature = "serde")]
-impl<K, V> Serialize for BTreeMap<K, V>
+impl<K, V, A: AllocTuning> Serialize for BTreeMap<K, V, A>
 where
     K: serde::Serialize,
     V: serde::Serialize,
@@ -600,12 +631,12 @@ where
 }
 
 #[cfg(feature = "serde")]
-struct BTreeMapVisitor<K, V> {
-    marker: PhantomData<fn() -> BTreeMap<K, V>>,
+struct BTreeMapVisitor<K, V, A> {
+    marker: PhantomData<fn() -> BTreeMap<K, V, A>>,
 }
 
 #[cfg(feature = "serde")]
-impl<K, V> BTreeMapVisitor<K, V> {
+impl<K, V, A: AllocTuning> BTreeMapVisitor<K, V, A> {
     fn new() -> Self {
         BTreeMapVisitor {
             marker: PhantomData,
@@ -614,12 +645,12 @@ impl<K, V> BTreeMapVisitor<K, V> {
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, V> Visitor<'de> for BTreeMapVisitor<K, V>
+impl<'de, K, V, A: AllocTuning> Visitor<'de> for BTreeMapVisitor<K, V, A>
 where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,
 {
-    type Value = BTreeMap<K, V>;
+    type Value = BTreeMap<K, V, A>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("BTreeMap")
@@ -656,7 +687,7 @@ where
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, V> Deserialize<'de> for BTreeMap<K, V>
+impl<'de, K, V, A: AllocTuning> Deserialize<'de> for BTreeMap<K, V, A>
 where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,
@@ -691,9 +722,10 @@ type TreeVec<K, V> = ShortVec<Tree<K, V>>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-struct InsertCtx<K, V> {
+struct InsertCtx<K, V, A: AllocTuning> {
     value: Option<V>,
     split: Option<Split<K, V>>,
+    atune: A,
 }
 
 fn check_range<T, R>(range: &R)
@@ -724,22 +756,15 @@ enum Tree<K, V> {
 }
 impl<K, V> Default for Tree<K, V> {
     fn default() -> Self {
-        Self::new(DEFAULT_BRANCH, DEFAULT_ALLOC_UNIT)
+        Self::new()
     }
 }
 impl<K, V> Tree<K, V> {
-    fn new(b: u16, au: u8) -> Self {
-        Tree::L(Leaf::new(b, au))
+    fn new() -> Self {
+        Tree::L(Leaf::new())
     }
 
-    fn bau(&self) -> (u16, u8) {
-        match self {
-            Tree::L(leaf) => leaf.bau(),
-            Tree::NL(nonleaf) => nonleaf.v.bau(),
-        }
-    }
-
-    fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
+    fn insert<A: AllocTuning>(&mut self, key: K, x: &mut InsertCtx<K, V, A>)
     where
         K: Ord,
     {
@@ -750,9 +775,10 @@ impl<K, V> Tree<K, V> {
     }
 
     fn new_root(&mut self, (med, right): Split<K, V>) {
-        let (b, au) = self.bau();
-        let mut nl = NonLeafInner::new(b, au);
+        let mut nl = NonLeafInner::new();
+        nl.v.0.set_alloc(1);
         nl.v.0.push(med);
+        nl.c.set_alloc(2);
         nl.c.push(mem::take(self));
         nl.c.push(right);
         *self = Tree::NL(nl);
@@ -885,7 +911,7 @@ impl<K, V> Tree<K, V> {
 
 impl<K, V> Default for Leaf<K, V> {
     fn default() -> Self {
-        Self::new(DEFAULT_BRANCH, DEFAULT_ALLOC_UNIT)
+        Self::new()
     }
 }
 
@@ -893,20 +919,12 @@ impl<K, V> Default for Leaf<K, V> {
 struct Leaf<K, V>(PairVec<K, V>);
 
 impl<K, V> Leaf<K, V> {
-    fn new(b: u16, au: u8) -> Self {
-        Self(PairVec::new(b * 2 - 1, au))
+    fn new() -> Self {
+        Self(PairVec::new())
     }
 
     fn full(&self) -> bool {
         self.0.full()
-    }
-
-    fn b(&self) -> usize {
-        self.0.cap() / 2 + 1
-    }
-
-    fn bau(&self) -> (u16, u8) {
-        (self.b() as u16, self.0.au())
     }
 
     fn into_iter(mut self) -> IntoIterPairVec<K, V> {
@@ -976,14 +994,13 @@ impl<K, V> Leaf<K, V> {
         }
     }
 
-    fn split(&mut self, r: usize) -> ((K, V), PairVec<K, V>) {
-        let b = self.b();
-        let right = self.0.split_off(b + 1, r);
+    fn split(&mut self, at: usize, extra: usize) -> ((K, V), PairVec<K, V>) {
+        let right = self.0.split_off_ex(at + 1, extra);
         let med = self.0.pop().unwrap();
         (med, right)
     }
 
-    fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
+    fn insert<A: AllocTuning>(&mut self, key: K, x: &mut InsertCtx<K, V, A>)
     where
         K: Ord,
     {
@@ -999,20 +1016,24 @@ impl<K, V> Leaf<K, V> {
         };
         let value = x.value.take().unwrap();
         if self.full() {
-            let b = self.b();
-            let r = usize::from(i > b);
-            let (med, mut right) = self.split(r);
-            if r == 1 {
-                i -= b + 1;
-                right.insert(i, (key, value));
-            } else {
-                self.0.insert(i, (key, value));
+            match x.atune.full_action(self.0.len()) {
+                FullAction::Split(b) => {
+                    let r = usize::from(i > b);
+                    let (med, mut right) = self.split(b, r * x.atune.alloc_unit());
+                    if r == 1 {
+                        i -= b + 1;
+                        right.insert(i, (key, value));
+                    } else {
+                        self.0.insert(i, (key, value));
+                    }
+                    let right = Tree::L(Self(right));
+                    x.split = Some((med, right));
+                    return;
+                }
+                FullAction::Extend(na) => self.0.set_alloc(na),
             }
-            let right = Tree::L(Self(right));
-            x.split = Some((med, right));
-        } else {
-            self.0.insert(i, (key, value));
         }
+        self.0.insert(i, (key, value));
     }
 
     fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
@@ -1100,19 +1121,18 @@ struct NonLeafInner<K, V> {
     c: TreeVec<K, V>,
 }
 impl<K, V> NonLeafInner<K, V> {
-    fn new(b: u16, au: u8) -> Box<Self> {
+    fn new() -> Box<Self> {
         Box::new(Self {
-            v: Leaf::new(b, au),
-            c: TreeVec::new(b * 2, au),
+            v: Leaf::new(),
+            c: TreeVec::new(),
         })
     }
 
-    fn split(&mut self, r: usize) -> ((K, V), Box<Self>) {
-        let b = self.v.b();
-        let (med, right) = self.v.split(r);
+    fn split(&mut self, b: usize, extra: usize) -> ((K, V), Box<Self>) {
+        let (med, right) = self.v.split(b, extra);
         let right = Box::new(Self {
             v: Leaf(right),
-            c: self.c.split_off(b + 1),
+            c: self.c.split_off(b + 1, extra),
         });
         (med, right)
     }
@@ -1136,7 +1156,7 @@ impl<K, V> NonLeafInner<K, V> {
         }
     }
 
-    fn insert(&mut self, key: K, x: &mut InsertCtx<K, V>)
+    fn insert<A: AllocTuning>(&mut self, key: K, x: &mut InsertCtx<K, V, A>)
     where
         K: Ord,
     {
@@ -1151,22 +1171,29 @@ impl<K, V> NonLeafInner<K, V> {
                 self.c.ixm(i).insert(key, x);
                 if let Some((med, right)) = x.split.take() {
                     if self.v.full() {
-                        let b = self.v.b();
-                        let r = usize::from(i > b);
-                        let (pmed, mut pright) = self.split(r);
-                        if r == 1 {
-                            i -= b + 1;
-                            pright.v.0.insert(i, med);
-                            pright.c.insert(i + 1, right);
-                        } else {
-                            self.v.0.insert(i, med);
-                            self.c.insert(i + 1, right);
+                        match x.atune.full_action(self.v.0.len()) {
+                            FullAction::Split(b) => {
+                                let r = usize::from(i > b);
+                                let (pmed, mut pright) = self.split(b, r * x.atune.alloc_unit());
+                                if r == 1 {
+                                    i -= b + 1;
+                                    pright.v.0.insert(i, med);
+                                    pright.c.insert(i + 1, right);
+                                } else {
+                                    self.v.0.insert(i, med);
+                                    self.c.insert(i + 1, right);
+                                }
+                                x.split = Some((pmed, Tree::NL(pright)));
+                                return;
+                            }
+                            FullAction::Extend(to) => {
+                                self.v.0.set_alloc(to);
+                                self.c.set_alloc(to + 1);
+                            }
                         }
-                        x.split = Some((pmed, Tree::NL(pright)));
-                    } else {
-                        self.v.0.insert(i, med);
-                        self.c.insert(i + 1, right);
                     }
+                    self.v.0.insert(i, med);
+                    self.c.insert(i + 1, right);
                 }
             }
         }
@@ -1208,17 +1235,17 @@ impl<K, V> NonLeafInner<K, V> {
 } // End impl NonLeafInner
 
 /// Error returned by [`BTreeMap::try_insert`].
-pub struct OccupiedError<'a, K, V>
+pub struct OccupiedError<'a, K, V, A: AllocTuning>
 where
     K: 'a,
     V: 'a,
 {
     /// Occupied entry, has the key that was not inserted.
-    pub entry: OccupiedEntry<'a, K, V>,
+    pub entry: OccupiedEntry<'a, K, V, A>,
     /// Value that was not inserted.
     pub value: V,
 }
-impl<K: Debug + Ord, V: Debug> Debug for OccupiedError<'_, K, V> {
+impl<K: Debug + Ord, V: Debug, A: AllocTuning> Debug for OccupiedError<'_, K, V, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OccupiedError")
             .field("key", self.entry.key())
@@ -1227,7 +1254,7 @@ impl<K: Debug + Ord, V: Debug> Debug for OccupiedError<'_, K, V> {
             .finish()
     }
 }
-impl<'a, K: Debug + Ord, V: Debug> fmt::Display for OccupiedError<'a, K, V> {
+impl<'a, K: Debug + Ord, V: Debug, A: AllocTuning> fmt::Display for OccupiedError<'a, K, V, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -1238,16 +1265,16 @@ impl<'a, K: Debug + Ord, V: Debug> fmt::Display for OccupiedError<'a, K, V> {
         )
     }
 }
-impl<'a, K: Debug + Ord, V: Debug> Error for OccupiedError<'a, K, V> {}
+impl<'a, K: Debug + Ord, V: Debug, A: AllocTuning> Error for OccupiedError<'a, K, V, A> {}
 
 /// Entry in `BTreeMap`, returned by [`BTreeMap::entry`].
-pub enum Entry<'a, K, V> {
+pub enum Entry<'a, K, V, A: AllocTuning> {
     /// Vacant entry - map doesn't yet contain key.
-    Vacant(VacantEntry<'a, K, V>),
+    Vacant(VacantEntry<'a, K, V, A>),
     /// Occupied entry - map already contains key.
-    Occupied(OccupiedEntry<'a, K, V>),
+    Occupied(OccupiedEntry<'a, K, V, A>),
 }
-impl<'a, K, V> Entry<'a, K, V>
+impl<'a, K, V, A: AllocTuning> Entry<'a, K, V, A>
 where
     K: Ord,
 {
@@ -1304,7 +1331,7 @@ where
     }
 
     /// Modify existing value ( if entry is occupied ).
-    pub fn and_modify<F>(mut self, f: F) -> Entry<'a, K, V>
+    pub fn and_modify<F>(mut self, f: F) -> Entry<'a, K, V, A>
     where
         F: FnOnce(&mut V),
     {
@@ -1320,18 +1347,18 @@ where
 }
 
 /// Vacant [Entry].
-pub struct VacantEntry<'a, K, V> {
+pub struct VacantEntry<'a, K, V, A: AllocTuning> {
     key: K,
-    cursor: CursorMut<'a, K, V>,
+    cursor: CursorMut<'a, K, V, A>,
 }
 
-impl<'a, K: Debug + Ord, V> Debug for VacantEntry<'a, K, V> {
+impl<'a, K: Debug + Ord, V, A: AllocTuning> Debug for VacantEntry<'a, K, V, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("VacantEntry").field(self.key()).finish()
     }
 }
 
-impl<'a, K, V> VacantEntry<'a, K, V>
+impl<'a, K, V, A: AllocTuning> VacantEntry<'a, K, V, A>
 where
     K: Ord,
 {
@@ -1353,10 +1380,10 @@ where
 }
 
 /// Occupied [Entry].
-pub struct OccupiedEntry<'a, K, V> {
-    cursor: CursorMut<'a, K, V>,
+pub struct OccupiedEntry<'a, K, V, A: AllocTuning> {
+    cursor: CursorMut<'a, K, V, A>,
 }
-impl<K: Debug + Ord, V: Debug> Debug for OccupiedEntry<'_, K, V> {
+impl<K: Debug + Ord, V: Debug, A: AllocTuning> Debug for OccupiedEntry<'_, K, V, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OccupiedEntry")
             .field("key", self.key())
@@ -1365,7 +1392,7 @@ impl<K: Debug + Ord, V: Debug> Debug for OccupiedEntry<'_, K, V> {
     }
 }
 
-impl<'a, K, V> OccupiedEntry<'a, K, V>
+impl<'a, K, V, A: AllocTuning> OccupiedEntry<'a, K, V, A>
 where
     K: Ord,
 {
@@ -1679,7 +1706,7 @@ pub struct IntoIter<K, V> {
     inner: IntoIterInner<K, V>,
 }
 impl<K, V> IntoIter<K, V> {
-    fn new(bt: BTreeMap<K, V>) -> Self {
+    fn new<A: AllocTuning>(bt: BTreeMap<K, V, A>) -> Self {
         let mut s = Self {
             len: bt.len(),
             inner: IntoIterInner::new(),
@@ -2228,14 +2255,14 @@ impl<'a, K, V> FusedIterator for Keys<'a, K, V> {}
 
 /// Iterator returned by [`BTreeMap::extract_if`].
 // #[derive(Debug)]
-pub struct ExtractIf<'a, K, V, F>
+pub struct ExtractIf<'a, K, V, A: AllocTuning, F>
 where
     F: FnMut(&K, &mut V) -> bool,
 {
-    source: CursorMut<'a, K, V>,
+    source: CursorMut<'a, K, V, A>,
     pred: F,
 }
-impl<K, V, F> fmt::Debug for ExtractIf<'_, K, V, F>
+impl<K, V, A: AllocTuning, F> fmt::Debug for ExtractIf<'_, K, V, A, F>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -2247,7 +2274,7 @@ where
             .finish()
     }
 }
-impl<'a, K, V, F> Iterator for ExtractIf<'a, K, V, F>
+impl<'a, K, V, A: AllocTuning, F> Iterator for ExtractIf<'a, K, V, A, F>
 where
     F: FnMut(&K, &mut V) -> bool,
 {
@@ -2262,7 +2289,10 @@ where
         }
     }
 }
-impl<'a, K, V, F> FusedIterator for ExtractIf<'a, K, V, F> where F: FnMut(&K, &mut V) -> bool {}
+impl<'a, K, V, A: AllocTuning, F> FusedIterator for ExtractIf<'a, K, V, A, F> where
+    F: FnMut(&K, &mut V) -> bool
+{
+}
 
 // Cursors.
 
@@ -2277,9 +2307,9 @@ impl fmt::Display for UnorderedKeyError {
 impl std::error::Error for UnorderedKeyError {}
 
 /// Cursor that allows mutation of map, returned by [`BTreeMap::lower_bound_mut`], [`BTreeMap::upper_bound_mut`].
-pub struct CursorMut<'a, K, V>(CursorMutKey<'a, K, V>);
-impl<'a, K, V> CursorMut<'a, K, V> {
-    fn lower_bound<Q>(map: &'a mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+pub struct CursorMut<'a, K, V, A: AllocTuning>(CursorMutKey<'a, K, V, A>);
+impl<'a, K, V, A: AllocTuning> CursorMut<'a, K, V, A> {
+    fn lower_bound<Q>(map: &'a mut BTreeMap<K, V, A>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2287,20 +2317,20 @@ impl<'a, K, V> CursorMut<'a, K, V> {
         unsafe {
             // Converting map to raw pointer here is necessary to keep Miri happy
             // although not when using MIRIFLAGS=-Zmiri-tree-borrows.
-            let map: *mut BTreeMap<K, V> = map;
+            let map: *mut BTreeMap<K, V, A> = map;
             let mut s = CursorMutKey::make(map);
             s.push_lower(&mut (*map).tree, bound);
             Self(s)
         }
     }
 
-    fn upper_bound<Q>(map: &'a mut BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    fn upper_bound<Q>(map: &'a mut BTreeMap<K, V, A>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         unsafe {
-            let map: *mut BTreeMap<K, V> = map;
+            let map: *mut BTreeMap<K, V, A> = map;
             let mut s = CursorMutKey::make(map);
             s.push_upper(&mut (*map).tree, bound);
             Self(s)
@@ -2381,13 +2411,13 @@ impl<'a, K, V> CursorMut<'a, K, V> {
     ///
     /// Keys must be unique and in sorted order.
     #[must_use]
-    pub unsafe fn with_mutable_key(self) -> CursorMutKey<'a, K, V> {
+    pub unsafe fn with_mutable_key(self) -> CursorMutKey<'a, K, V, A> {
         self.0
     }
 
     /// Returns a read-only cursor pointing to the same location as the `CursorMut`.
     #[must_use]
-    pub fn as_cursor(&self) -> Cursor<'_, K, V> {
+    pub fn as_cursor(&self) -> Cursor<'_, K, V, A> {
         self.0.as_cursor()
     }
 
@@ -2398,19 +2428,19 @@ impl<'a, K, V> CursorMut<'a, K, V> {
 }
 
 /// Cursor that allows mutation of map keys, returned by [`CursorMut::with_mutable_key`].
-pub struct CursorMutKey<'a, K, V> {
-    map: *mut BTreeMap<K, V>,
+pub struct CursorMutKey<'a, K, V, A: AllocTuning> {
+    map: *mut BTreeMap<K, V, A>,
     leaf: Option<*mut Leaf<K, V>>,
     index: usize,
     stack: StkVec<(*mut NonLeaf<K, V>, usize)>,
-    _pd: PhantomData<&'a mut BTreeMap<K, V>>,
+    _pd: PhantomData<&'a mut BTreeMap<K, V, A>>,
 }
 
-unsafe impl<'a, K, V> Send for CursorMutKey<'a, K, V> {}
-unsafe impl<'a, K, V> Sync for CursorMutKey<'a, K, V> {}
+unsafe impl<'a, K, V, A: AllocTuning> Send for CursorMutKey<'a, K, V, A> {}
+unsafe impl<'a, K, V, A: AllocTuning> Sync for CursorMutKey<'a, K, V, A> {}
 
-impl<'a, K, V> CursorMutKey<'a, K, V> {
-    fn make(map: *mut BTreeMap<K, V>) -> Self {
+impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
+    fn make(map: *mut BTreeMap<K, V, A>) -> Self {
         Self {
             map,
             leaf: None,
@@ -2557,14 +2587,19 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
             (*self.map).len += 1;
             let mut leaf = self.leaf.unwrap_unchecked();
             if (*leaf).full() {
-                let b = (*leaf).b();
-                let r = usize::from(self.index > b);
-                let (med, right) = (*leaf).split(r);
-                let right = Tree::L(Leaf(right));
-                self.index -= r * (b + 1);
-                let t = self.save_split(med, right, r);
-                leaf = (*t).leaf();
-                self.leaf = Some(leaf);
+                let a = &(*self.map).atune;
+                match a.full_action((*leaf).0.len()) {
+                    FullAction::Split(b) => {
+                        let r = usize::from(self.index > b);
+                        let (med, right) = (*leaf).split(b, r * a.alloc_unit());
+                        let right = Tree::L(Leaf(right));
+                        self.index -= r * (b + 1);
+                        let t = self.save_split(med, right, r);
+                        leaf = (*t).leaf();
+                        self.leaf = Some(leaf);
+                    }
+                    FullAction::Extend(to) => (*leaf).0.set_alloc(to),
+                }
             }
             (*leaf).0.insert(self.index, (key, value));
         }
@@ -2574,12 +2609,20 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
         unsafe {
             if let Some((mut nl, mut ix)) = self.stack.pop() {
                 if (*nl).v.full() {
-                    let b = (*nl).v.b();
-                    let r = usize::from(ix > b);
-                    let (med, right) = (*nl).split(r);
-                    ix -= r * (b + 1);
-                    let t = self.save_split(med, Tree::NL(right), r);
-                    nl = (*t).nonleaf();
+                    let a = &(*self.map).atune;
+                    match a.full_action((*nl).v.0.len()) {
+                        FullAction::Split(b) => {
+                            let r = usize::from(ix > b);
+                            let (med, right) = (*nl).split(b, r * a.alloc_unit());
+                            ix -= r * (b + 1);
+                            let t = self.save_split(med, Tree::NL(right), r);
+                            nl = (*t).nonleaf();
+                        }
+                        FullAction::Extend(to) => {
+                            (*nl).v.0.set_alloc(to);
+                            (*nl).c.set_alloc(to + 1);
+                        }
+                    }
                 }
                 (*nl).v.0.insert(ix, med);
                 (*nl).c.insert(ix + 1, tree);
@@ -2715,7 +2758,7 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
 
     /// Returns a read-only cursor pointing to the same location as the `CursorMutKey`.
     #[must_use]
-    pub fn as_cursor(&self) -> Cursor<'_, K, V> {
+    pub fn as_cursor(&self) -> Cursor<'_, K, V, A> {
         unsafe {
             let mut c = Cursor::make();
             c.index = self.index;
@@ -2738,17 +2781,17 @@ impl<'a, K, V> CursorMutKey<'a, K, V> {
 
 /// Cursor returned by [`BTreeMap::lower_bound`], [`BTreeMap::upper_bound`].
 #[derive(Debug, Clone)]
-pub struct Cursor<'a, K, V> {
+pub struct Cursor<'a, K, V, A: AllocTuning> {
     leaf: Option<*const Leaf<K, V>>,
     index: usize,
     stack: StkVec<(*const NonLeaf<K, V>, usize)>,
-    _pd: PhantomData<&'a BTreeMap<K, V>>,
+    _pd: PhantomData<&'a BTreeMap<K, V, A>>,
 }
 
-unsafe impl<'a, K, V> Send for Cursor<'a, K, V> {}
-unsafe impl<'a, K, V> Sync for Cursor<'a, K, V> {}
+unsafe impl<'a, K, V, A: AllocTuning> Send for Cursor<'a, K, V, A> {}
+unsafe impl<'a, K, V, A: AllocTuning> Sync for Cursor<'a, K, V, A> {}
 
-impl<'a, K, V> Cursor<'a, K, V> {
+impl<'a, K, V, A: AllocTuning> Cursor<'a, K, V, A> {
     fn make() -> Self {
         Self {
             leaf: None,
@@ -2758,7 +2801,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
         }
     }
 
-    fn lower_bound<Q>(bt: &'a BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    fn lower_bound<Q>(bt: &'a BTreeMap<K, V, A>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2768,7 +2811,7 @@ impl<'a, K, V> Cursor<'a, K, V> {
         s
     }
 
-    fn upper_bound<Q>(bt: &'a BTreeMap<K, V>, bound: Bound<&Q>) -> Self
+    fn upper_bound<Q>(bt: &'a BTreeMap<K, V, A>, bound: Bound<&Q>) -> Self
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
@@ -2971,5 +3014,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-//#[cfg(test)]
-//mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+#[cfg(test)]
+mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!

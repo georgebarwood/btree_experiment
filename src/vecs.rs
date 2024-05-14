@@ -36,7 +36,7 @@ impl<T> BasicVec<T> {
 
     /// Get mutable raw pointer to specified element.
     /// # Safety
-    /// index must be < set capacity.
+    /// index must be < set allocation.
     #[inline]
     pub unsafe fn ix(&self, index: usize) -> *mut T {
         self.p.as_ptr().add(index)
@@ -74,7 +74,7 @@ impl<T> BasicVec<T> {
     /// Free memory.
     /// # Safety
     ///
-    /// The capacity must be the last capacity set.
+    /// oa must be the last allocation set.
     pub unsafe fn free(&mut self, oa: usize) {
         let elem_size = mem::size_of::<T>();
         if oa != 0 && elem_size != 0 {
@@ -89,7 +89,7 @@ impl<T> BasicVec<T> {
     /// Set value.
     /// # Safety
     ///
-    /// ix must be < capacity, and the element must be unset.
+    /// ix must be < alloc, and the element must be unset.
     #[inline]
     pub unsafe fn set(&mut self, i: usize, elem: T) {
         ptr::write(self.ix(i), elem);
@@ -98,7 +98,7 @@ impl<T> BasicVec<T> {
     /// Get value.
     /// # Safety
     ///
-    /// ix must be less < capacity, and the element must have been set.
+    /// ix must be less < alloc, and the element must have been set.
     #[inline]
     pub unsafe fn get(&mut self, i: usize) -> T {
         ptr::read(self.ix(i))
@@ -107,7 +107,7 @@ impl<T> BasicVec<T> {
     /// Get whole as slice.
     /// # Safety
     ///
-    /// len must be <= capacity and 0..len elements must have been set.
+    /// len must be <= alloc and 0..len elements must have been set.
     #[inline]
     pub unsafe fn slice(&self, len: usize) -> &[T] {
         std::slice::from_raw_parts(self.p.as_ptr(), len)
@@ -116,7 +116,7 @@ impl<T> BasicVec<T> {
     /// Get whole as mut slice.
     /// # Safety
     ///
-    /// len must be <= capacity and 0..len elements must have been set.
+    /// len must be <= alloc and 0..len elements must have been set.
     #[inline]
     pub unsafe fn slice_mut(&mut self, len: usize) -> &mut [T] {
         std::slice::from_raw_parts_mut(self.p.as_ptr(), len)
@@ -157,18 +157,16 @@ macro_rules! safe_assert {
     };
 }
 
-/// Vec with limited capacity that allocates incrementally and trims when split.
+/// Vec with manual allocation.
 pub struct ShortVec<T> {
     len: u16,   // Current length.
     alloc: u16, // Currently allocated.
-    cap: u16,   // Maximum capacity ( never allocate more than this ).
-    alloc_unit: u8,
     v: BasicVec<T>,
 }
 
 impl<T> Default for ShortVec<T> {
     fn default() -> Self {
-        Self::new(64, 8)
+        Self::new()
     }
 }
 
@@ -181,20 +179,17 @@ impl<T> Drop for ShortVec<T> {
                 self.v.get(len);
             }
         }
-        unsafe {
-            self.v.free(self.alloc as usize);
-        }
+        self.len = 0;
+        self.set_alloc(0);
     }
 }
 
 impl<T> ShortVec<T> {
-    pub fn new(cap: u16, alloc_unit: u8) -> Self {
+    pub fn new() -> Self {
         let v = BasicVec::new();
         Self {
             len: 0,
             alloc: 0,
-            cap,
-            alloc_unit,
             v,
         }
     }
@@ -204,37 +199,17 @@ impl<T> ShortVec<T> {
         self.len as usize
     }
 
-    #[inline]
-    fn allocate(&mut self, amount: usize) {
-        safe_assert!(amount <= self.cap as usize);
-        if amount > self.alloc as usize {
-            self.increase_alloc(amount);
-        }
-    }
-
-    fn increase_alloc(&mut self, amount: usize) {
-        let mut na = amount + self.alloc_unit as usize;
-        if na + self.alloc_unit as usize > self.cap as usize {
-            na = self.cap as usize;
-        }
+    pub fn set_alloc(&mut self, na: usize) {
+        safe_assert!(na >= self.len());
         unsafe {
             self.v.set_alloc(self.alloc as usize, na);
         }
         self.alloc = na as u16;
     }
 
-    fn trim(&mut self) {
-        let na = self.len();
-        if self.alloc as usize > na {
-            unsafe {
-                self.v.set_alloc(self.alloc as usize, na);
-            }
-            self.alloc = na as u16;
-        }
-    }
     #[inline]
     pub fn push(&mut self, value: T) {
-        self.allocate(self.len() + 1);
+        safe_assert!(self.len < self.alloc);
         unsafe {
             self.v.set(self.len(), value);
         }
@@ -252,7 +227,7 @@ impl<T> ShortVec<T> {
     }
 
     pub fn insert(&mut self, at: usize, value: T) {
-        self.allocate(self.len() + 1);
+        safe_assert!(self.len < self.alloc);
         unsafe {
             if at < self.len() {
                 self.v.move_self(at, at + 1, self.len() - at);
@@ -268,22 +243,20 @@ impl<T> ShortVec<T> {
             let result = self.v.get(at);
             self.v.move_self(at + 1, at, self.len() - at - 1);
             self.len -= 1;
-            self.trim();
             result
         }
     }
 
-    pub fn split_off(&mut self, at: usize) -> Self {
+    pub fn split_off(&mut self, at: usize, extra: usize) -> Self {
         safe_assert!(at < self.len());
         let len = self.len() - at;
-        let mut result = Self::new(self.cap, self.alloc_unit);
-        result.allocate(len);
+        let mut result = Self::new();
+        result.set_alloc(len + extra);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
         }
         result.len = len as u16;
         self.len -= len as u16;
-        self.trim();
         result
     }
 
@@ -307,8 +280,8 @@ where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        let mut c = Self::new(self.cap, self.alloc_unit);
-        c.allocate(self.alloc as usize);
+        let mut c = Self::new();
+        c.set_alloc(self.alloc as usize);
         let mut n = self.len;
         if n > 0 {
             unsafe {
@@ -412,16 +385,14 @@ use std::marker::PhantomData;
 /// Vector of (key,value) pairs, keys stored separately from values for cache efficient search.
 pub struct PairVec<K, V> {
     p: NonNull<u8>,
-    len: u16,       // Current length
-    alloc: u16,     // Allocated
-    capacity: u16,  // Maximum capacity
-    alloc_unit: u8, // Allocation unit.
+    len: u16,   // Current length
+    alloc: u16, // Allocated
     _pd: PhantomData<(K, V)>,
 }
 
 impl<K, V> Default for PairVec<K, V> {
     fn default() -> Self {
-        Self::new(0, 1)
+        Self::new()
     }
 }
 
@@ -430,7 +401,7 @@ impl<K, V> Drop for PairVec<K, V> {
         while self.len != 0 {
             self.pop();
         }
-        self.trim();
+        self.set_alloc(0);
     }
 }
 
@@ -438,13 +409,11 @@ unsafe impl<K: Send, V: Send> Send for PairVec<K, V> {}
 unsafe impl<K: Sync, V: Sync> Sync for PairVec<K, V> {}
 
 impl<K, V> PairVec<K, V> {
-    pub fn new(capacity: u16, alloc_unit: u8) -> Self {
+    pub fn new() -> Self {
         Self {
             p: NonNull::dangling(),
             len: 0,
             alloc: 0,
-            capacity,
-            alloc_unit,
             _pd: PhantomData,
         }
     }
@@ -458,15 +427,7 @@ impl<K, V> PairVec<K, V> {
     }
 
     pub fn full(&self) -> bool {
-        self.len == self.capacity
-    }
-
-    pub fn cap(&self) -> usize {
-        self.capacity as usize
-    }
-
-    pub fn au(&self) -> u8 {
-        self.alloc_unit
+        self.len == self.alloc
     }
 
     #[inline]
@@ -483,28 +444,19 @@ impl<K, V> PairVec<K, V> {
         Self::layout(amount).1
     }
 
-    fn trim(&mut self) {
-        self.alloc(self.len());
-    }
-
-    fn allocate(&mut self, mut amount: usize) {
-        if amount > self.capacity as usize {
-            amount = self.capacity as usize;
-        }
-        self.alloc(amount);
-    }
-
-    fn alloc(&mut self, amount: usize) {
+    pub fn set_alloc(&mut self, na: usize) {
+        safe_assert!(na >= self.len());
         if mem::size_of::<K>() == 0 && mem::size_of::<V>() == 0 {
+            self.alloc = na as u16;
             return;
         }
         unsafe {
             let (old_layout, old_off) = Self::layout(self.alloc as usize);
 
-            let np = if amount == 0 {
+            let np = if na == 0 {
                 NonNull::dangling()
             } else {
-                let (layout, off) = Self::layout(amount);
+                let (layout, off) = Self::layout(na);
                 let np = alloc::alloc(layout);
                 let np = match NonNull::new(np.cast::<u8>()) {
                     Some(np) => np,
@@ -528,17 +480,16 @@ impl<K, V> PairVec<K, V> {
             if self.alloc > 0 {
                 alloc::dealloc(self.p.as_ptr(), old_layout);
             }
-            self.alloc = amount as u16;
+            self.alloc = na as u16;
             self.p = np;
         }
     }
 
-    pub fn split_off(&mut self, at: usize, r: usize) -> Self {
+    pub fn split_off_ex(&mut self, at: usize, ex: usize) -> Self {
         safe_assert!(at <= self.len());
-        safe_assert!(r <= 1);
         let len = self.len() - at;
-        let mut result = Self::new(self.capacity, self.alloc_unit);
-        result.allocate(len + r * self.alloc_unit as usize);
+        let mut result = Self::new();
+        result.set_alloc(len + ex);
         unsafe {
             let (kf, vf) = self.ixmp(at);
             let (kt, vt) = result.ixmp(0);
@@ -547,16 +498,12 @@ impl<K, V> PairVec<K, V> {
         }
         result.len = len as u16;
         self.len -= len as u16;
-        self.allocate(self.len() + (1 - r) * self.alloc_unit as usize);
         result
     }
 
     pub fn insert(&mut self, at: usize, (key, value): (K, V)) {
-        safe_assert!(self.len < self.capacity);
         safe_assert!(at <= self.len());
-        if self.alloc == self.len {
-            self.allocate(self.len() + self.alloc_unit as usize);
-        }
+        assert!(self.len < self.alloc, "{} {}", self.len, self.alloc);
         unsafe {
             let n = self.len() - at;
             let (kp, vp) = self.ixmp(at);
@@ -566,7 +513,7 @@ impl<K, V> PairVec<K, V> {
             }
             kp.write(key);
             vp.write(value);
-            self.len += 1
+            self.len += 1;
         }
     }
 
@@ -586,10 +533,7 @@ impl<K, V> PairVec<K, V> {
     }
 
     pub fn push(&mut self, (key, value): (K, V)) {
-        safe_assert!(self.len < self.capacity);
-        if self.alloc == self.len {
-            self.allocate(self.len() + self.alloc_unit as usize);
-        }
+        safe_assert!(self.len < self.alloc);
         unsafe {
             let (kp, vp) = self.ixmp(self.len());
             kp.write(key);
@@ -743,8 +687,8 @@ where
     V: Clone,
 {
     fn clone(&self) -> Self {
-        let mut c = Self::new(self.capacity, self.alloc_unit);
-        c.allocate(self.alloc as usize);
+        let mut c = Self::new();
+        c.set_alloc(self.alloc as usize);
         let mut n = self.len;
         if n > 0 {
             unsafe {
