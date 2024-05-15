@@ -23,46 +23,21 @@
 //! - `serde` : enables serialisation of [`BTreeMap`] via serde crate.
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
-const DEFAULT_BRANCH: u16 = 64;
-const DEFAULT_ALLOC_UNIT: u8 = 8;
-
-/// ...
+/// Type returned by [AllocTuning::full_action].
 pub enum FullAction {
-    ///...
-    Split(usize),
-    ///...
+    /// Vec is to be split at indicated point with the indicated new allocations.
+    Split(usize, usize, usize),
+    /// Vec is to be extended to indicated length.
     Extend(usize),
 }
 
-/// ...
+/// Trait for controlling storage allocation for [BTreeMap].
 pub trait AllocTuning: Clone + Default {
-    /// Get the amount by which to increase allocation when a vec is full.
-    fn alloc_unit(&self) -> usize;
-
-    /// Get the B value ( BTree branch number )
-    fn branch(&self) -> usize;
-
     /// Determine what to do when the size of an underlying BTree vector needs to be increased.
-    fn full_action(&self, len: usize) -> FullAction {
-        let lim = self.branch() * 2 - 1;
-        if len >= lim {
-            FullAction::Split(len / 2)
-        } else {
-            let mut na = len + self.alloc_unit();
-            if na > lim {
-                na = lim;
-            }
-            FullAction::Extend(na)
-        }
-    }
-
-    /// Validity check. branch must be at least 6, not more than 512. alloc_unit must be greater than zero.
-    fn valid(&self) -> bool {
-        self.branch() >= 6 && self.branch() <= 512 && self.alloc_unit() > 0
-    }
+    fn full_action(&self, i: usize, len: usize) -> FullAction;
 }
 
-/// ...
+/// Default implementation of [AllocTuning]. Default branch is 64, default allocation unit is 8.
 #[derive(Clone)]
 pub struct DefaultAllocTuning {
     branch: u16,
@@ -71,17 +46,35 @@ pub struct DefaultAllocTuning {
 impl Default for DefaultAllocTuning {
     fn default() -> Self {
         Self {
-            branch: DEFAULT_BRANCH,
-            alloc_unit: DEFAULT_ALLOC_UNIT,
+            branch: 6,     // 64,
+            alloc_unit: 1, // 8,
         }
     }
 }
 impl AllocTuning for DefaultAllocTuning {
-    fn branch(&self) -> usize {
-        self.branch as usize
+    fn full_action(&self, i: usize, len: usize) -> FullAction {
+        let lim = (self.branch as usize) * 2 + 1;
+        if len >= lim {
+            let b = len / 2;
+            let r = usize::from(i > b);
+            let au = self.alloc_unit as usize;
+            FullAction::Split(b, b + (1 - r) * au, (len - b - 1) + r * au)
+        } else {
+            let mut na = len + self.alloc_unit as usize;
+            if na > lim {
+                na = lim;
+            }
+            FullAction::Extend(na)
+        }
     }
-    fn alloc_unit(&self) -> usize {
-        self.alloc_unit as usize
+}
+impl DefaultAllocTuning {
+    /// Construct with specified branch and allocation unit.
+    pub fn new(branch: u16, alloc_unit: u8) -> Self {
+        assert!(branch >= 6);
+        assert!(branch <= 512);
+        assert!(alloc_unit > 0);
+        Self { branch, alloc_unit }
     }
 }
 
@@ -99,10 +92,7 @@ impl AllocTuning for DefaultAllocTuning {
 /// Roughly speaking, unsafe code is limited to the vecs module and the implementation of [`CursorMut`] and [`CursorMutKey`].
 
 #[derive(Clone)]
-pub struct BTreeMap<K, V, A = DefaultAllocTuning>
-where
-    A: AllocTuning,
-{
+pub struct BTreeMap<K, V, A: AllocTuning = DefaultAllocTuning> {
     len: usize,
     tree: Tree<K, V>,
     atune: A,
@@ -128,7 +118,6 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
     /// Returns a new, empty map with specified allocation tuning.
     #[must_use]
     pub fn with_tuning(atune: A) -> Self {
-        assert!(atune.valid());
         Self {
             len: 0,
             tree: Tree::new(),
@@ -138,7 +127,6 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
 
     /// Update the allocation tuning for the map.
     pub fn update_tuning(&mut self, atune: A) {
-        assert!(atune.valid());
         self.atune = atune;
     }
 
@@ -213,7 +201,7 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
         let mut x = InsertCtx {
             value: Some(value),
             split: None,
-            atune: self.atune.clone(),
+            atune: &self.atune,
         };
         self.tree.insert(key, &mut x);
         if let Some(split) = x.split {
@@ -729,10 +717,10 @@ type TreeVec<K, V> = ShortVec<Tree<K, V>>;
 
 type Split<K, V> = ((K, V), Tree<K, V>);
 
-struct InsertCtx<K, V, A: AllocTuning> {
+struct InsertCtx<'a, K, V, A: AllocTuning> {
     value: Option<V>,
     split: Option<Split<K, V>>,
-    atune: A,
+    atune: &'a A,
 }
 
 fn check_range<T, R>(range: &R)
@@ -1001,12 +989,6 @@ impl<K, V> Leaf<K, V> {
         }
     }
 
-    fn split(&mut self, at: usize, r: usize, au: usize) -> ((K, V), PairVec<K, V>) {
-        let right = self.0.split_off(at + 1, r, au);
-        let med = self.0.pop().unwrap();
-        (med, right)
-    }
-
     fn insert<A: AllocTuning>(&mut self, key: K, x: &mut InsertCtx<K, V, A>)
     where
         K: Ord,
@@ -1023,11 +1005,10 @@ impl<K, V> Leaf<K, V> {
         };
         let value = x.value.take().unwrap();
         if self.full() {
-            match x.atune.full_action(self.0.len()) {
-                FullAction::Split(b) => {
-                    let r = usize::from(i > b);
-                    let (med, mut right) = self.split(b, r, x.atune.alloc_unit());
-                    if r == 1 {
+            match x.atune.full_action(i, self.0.len()) {
+                FullAction::Split(b, a1, a2) => {
+                    let (med, mut right) = self.0.split(b, a1, a2);
+                    if i > b {
                         i -= b + 1;
                         right.insert(i, (key, value));
                     } else {
@@ -1135,17 +1116,6 @@ impl<K, V> NonLeafInner<K, V> {
         })
     }
 
-    fn split(&mut self, b: usize, r: usize, au: usize) -> ((K, V), Box<Self>) {
-        let (med, right) = self.v.split(b, r, au);
-        let right = Box::new(Self {
-            v: Leaf(right),
-            c: self.c.split_off(b + 1, r, au),
-        });
-        debug_assert!(right.v.0.alloc + 1 == right.c.alloc);
-        debug_assert!(self.v.0.alloc + 1 == self.c.alloc);
-        (med, right)
-    }
-
     #[allow(clippy::type_complexity)]
     fn into_iter(mut self) -> (IntoIterPairVec<K, V>, IntoIterShortVec<Tree<K, V>>) {
         let v = mem::take(&mut self.v);
@@ -1165,6 +1135,17 @@ impl<K, V> NonLeafInner<K, V> {
         }
     }
 
+    fn split(&mut self, b: usize, a1: usize, a2: usize) -> ((K, V), Box<Self>) {
+        let (med, right) = self.v.0.split(b, a1, a2);
+        let right = Box::new(Self {
+            v: Leaf(right),
+            c: self.c.split(b + 1, a1 + 1, a2 + 1),
+        });
+        debug_assert!(right.v.0.alloc + 1 == right.c.alloc);
+        debug_assert!(self.v.0.alloc + 1 == self.c.alloc);
+        (med, right)
+    }
+
     fn insert<A: AllocTuning>(&mut self, key: K, x: &mut InsertCtx<K, V, A>)
     where
         K: Ord,
@@ -1180,11 +1161,10 @@ impl<K, V> NonLeafInner<K, V> {
                 self.c.ixm(i).insert(key, x);
                 if let Some((med, right)) = x.split.take() {
                     if self.v.full() {
-                        match x.atune.full_action(self.v.0.len()) {
-                            FullAction::Split(b) => {
-                                let r = usize::from(i > b);
-                                let (pmed, mut pright) = self.split(b, r, x.atune.alloc_unit());
-                                if r == 1 {
+                        match x.atune.full_action(i, self.v.0.len()) {
+                            FullAction::Split(b, a1, a2) => {
+                                let (pmed, mut pright) = self.split(b, a1, a2);
+                                if i > b {
                                     i -= b + 1;
                                     pright.v.0.insert(i, med);
                                     pright.c.insert(i + 1, right);
@@ -2597,11 +2577,11 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
             let mut leaf = self.leaf.unwrap_unchecked();
             if (*leaf).full() {
                 let a = &(*self.map).atune;
-                match a.full_action((*leaf).0.len()) {
-                    FullAction::Split(b) => {
-                        let r = usize::from(self.index > b);
-                        let (med, right) = (*leaf).split(b, r, a.alloc_unit());
+                match a.full_action(self.index, (*leaf).0.len()) {
+                    FullAction::Split(b, a1, a2) => {
+                        let (med, right) = (*leaf).0.split(b, a1, a2);
                         let right = Tree::L(Leaf(right));
+                        let r = usize::from(self.index > b);
                         self.index -= r * (b + 1);
                         let t = self.save_split(med, right, r);
                         leaf = (*t).leaf();
@@ -2619,10 +2599,10 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
             if let Some((mut nl, mut ix)) = self.stack.pop() {
                 if (*nl).v.full() {
                     let a = &(*self.map).atune;
-                    match a.full_action((*nl).v.0.len()) {
-                        FullAction::Split(b) => {
+                    match a.full_action(ix, (*nl).v.0.len()) {
+                        FullAction::Split(b, a1, a2) => {
+                            let (med, right) = (*nl).split(b, a1, a2);
                             let r = usize::from(ix > b);
-                            let (med, right) = (*nl).split(b, r, a.alloc_unit());
                             ix -= r * (b + 1);
                             let t = self.save_split(med, Tree::NL(right), r);
                             nl = (*t).nonleaf();

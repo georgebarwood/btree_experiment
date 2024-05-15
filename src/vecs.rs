@@ -202,6 +202,9 @@ impl<T> ShortVec<T> {
 
     pub fn set_alloc(&mut self, na: usize) {
         safe_assert!(na >= self.len());
+        if na == self.alloc as usize {
+            return;
+        }
         unsafe {
             self.v.set_alloc(self.alloc as usize, na);
         }
@@ -248,17 +251,19 @@ impl<T> ShortVec<T> {
         }
     }
 
-    pub fn split_off(&mut self, at: usize, r: usize, au: usize) -> Self {
+    pub fn split(&mut self, at: usize, a1: usize, a2: usize) -> Self {
         safe_assert!(at < self.len());
         let len = self.len() - at;
+        safe_assert!(a1 >= at);
+        safe_assert!(a2 >= len);
         let mut result = Self::new();
-        result.set_alloc(len + r * au);
+        result.set_alloc(a2);
         unsafe {
             result.v.move_from(at, &mut self.v, 0, len);
         }
         result.len = len as u16;
-        self.len -= len as u16;
-        self.set_alloc(self.len() + 1 + (1 - r) * au);
+        self.len = at as u16;
+        self.set_alloc(a1);
         result
     }
 
@@ -449,6 +454,9 @@ impl<K, V> PairVec<K, V> {
 
     pub fn set_alloc(&mut self, na: usize) {
         safe_assert!(na >= self.len());
+        if na == self.alloc as usize {
+            return;
+        }
         if mem::size_of::<K>() == 0 && mem::size_of::<V>() == 0 {
             self.alloc = na as u16;
             return;
@@ -488,25 +496,28 @@ impl<K, V> PairVec<K, V> {
         }
     }
 
-    pub fn split_off(&mut self, at: usize, r: usize, au: usize) -> Self {
+    pub fn split(&mut self, at: usize, a1: usize, a2: usize) -> ((K, V), Self) {
         safe_assert!(at <= self.len());
-        let len = self.len() - at;
+        let x = at + 1;
+        let len = self.len() - x;
         let mut result = Self::new();
-        result.set_alloc(len + r * au);
+        result.set_alloc(a2);
         unsafe {
-            let (kf, vf) = self.ixmp(at);
+            let (kf, vf) = self.ixmp(x);
             let (kt, vt) = result.ixmp(0);
             ptr::copy_nonoverlapping(kf, kt, len);
             ptr::copy_nonoverlapping(vf, vt, len);
         }
         result.len = len as u16;
         self.len -= len as u16;
-        self.set_alloc(self.len() + (1 - r) * au);
-        result
+        let med = self.pop().unwrap();
+        self.set_alloc(a1);
+        (med, result)
     }
 
     pub fn insert(&mut self, at: usize, (key, value): (K, V)) {
         safe_assert!(at <= self.len());
+        assert!(self.len < self.alloc, "{} {}", self.len, self.alloc);
         safe_assert!(self.len < self.alloc);
         unsafe {
             let n = self.len() - at;
