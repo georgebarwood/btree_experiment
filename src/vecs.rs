@@ -430,6 +430,10 @@ impl<K, V> PairVec<K, V> {
         self.len as usize
     }
 
+    pub fn state(&self) -> (usize, usize) {
+        (self.len as usize, self.alloc as usize)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }

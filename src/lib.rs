@@ -35,6 +35,8 @@ pub enum FullAction {
 pub trait AllocTuning: Clone + Default {
     /// Determine what to do when the size of an underlying BTree vector needs to be increased.
     fn full_action(&self, i: usize, len: usize) -> FullAction;
+    /// Returns the new allocation if the allocation should be reduced based on the current allocation and length.
+    fn space_action(&self, state: (usize, usize)) -> Option<usize>;
 }
 
 /// Default implementation of [AllocTuning]. Default branch is 64, default allocation unit is 8.
@@ -65,6 +67,13 @@ impl AllocTuning for DefaultAllocTuning {
                 na = lim;
             }
             FullAction::Extend(na)
+        }
+    }
+    fn space_action(&self, (len, alloc): (usize, usize)) -> Option<usize> {
+        if alloc - len > self.alloc_unit as usize {
+            Some(len)
+        } else {
+            None
         }
     }
 }
@@ -252,21 +261,21 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        let result = self.tree.remove(key)?;
+        let result = self.tree.remove(key, &self.atune)?;
         self.len -= 1;
         Some(result)
     }
 
     /// Remove first key-value pair from map.
     pub fn pop_first(&mut self) -> Option<(K, V)> {
-        let result = self.tree.pop_first()?;
+        let result = self.tree.pop_first(&self.atune)?;
         self.len -= 1;
         Some(result)
     }
 
     /// Remove last key-value pair from map.
     pub fn pop_last(&mut self) -> Option<(K, V)> {
-        let result = self.tree.pop_last()?;
+        let result = self.tree.pop_last(&self.atune)?;
         self.len -= 1;
         Some(result)
     }
@@ -793,14 +802,14 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
+    fn remove<Q, A: AllocTuning>(&mut self, key: &Q, atune: &A) -> Option<(K, V)>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         match self {
-            Tree::L(leaf) => leaf.remove(key),
-            Tree::NL(nonleaf) => nonleaf.remove(key),
+            Tree::L(leaf) => leaf.remove(key, atune),
+            Tree::NL(nonleaf) => nonleaf.remove(key, atune),
         }
     }
 
@@ -855,17 +864,17 @@ impl<K, V> Tree<K, V> {
         }
     }
 
-    fn pop_first(&mut self) -> Option<(K, V)> {
+    fn pop_first<A: AllocTuning>(&mut self, atune: &A) -> Option<(K, V)> {
         match self {
-            Tree::L(leaf) => leaf.pop_first(),
-            Tree::NL(nonleaf) => nonleaf.pop_first(),
+            Tree::L(leaf) => leaf.pop_first(atune),
+            Tree::NL(nonleaf) => nonleaf.pop_first(atune),
         }
     }
 
-    fn pop_last(&mut self) -> Option<(K, V)> {
+    fn pop_last<A: AllocTuning>(&mut self, atune: &A) -> Option<(K, V)> {
         match self {
-            Tree::L(leaf) => leaf.0.pop(),
-            Tree::NL(nonleaf) => nonleaf.pop_last(),
+            Tree::L(leaf) => leaf.pop_last(atune),
+            Tree::NL(nonleaf) => nonleaf.pop_last(atune),
         }
     }
 
@@ -1024,12 +1033,17 @@ impl<K, V> Leaf<K, V> {
         self.0.insert(i, (key, value));
     }
 
-    fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
+    fn remove<Q, A: AllocTuning>(&mut self, key: &Q, atune: &A) -> Option<(K, V)>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
-        Some(self.0.remove(self.look(key).ok()?))
+        let ix = self.look(key).ok()?;
+        let result = self.0.remove(ix);
+        if let Some(na) = atune.space_action(self.0.state()) {
+            self.0.set_alloc(na);
+        }
+        Some(result)
     }
 
     #[inline]
@@ -1059,11 +1073,26 @@ impl<K, V> Leaf<K, V> {
         Some(self.0.ixmv(self.look(key).ok()?))
     }
 
-    fn pop_first(&mut self) -> Option<(K, V)> {
+    fn pop_first<A: AllocTuning>(&mut self, atune: &A) -> Option<(K, V)> {
         if self.0.is_empty() {
             return None;
         }
-        Some(self.0.remove(0))
+        let result = Some(self.0.remove(0));
+        if let Some(na) = atune.space_action(self.0.state()) {
+            self.0.set_alloc(na);
+        }
+        result
+    }
+
+    fn pop_last<A: AllocTuning>(&mut self, atune: &A) -> Option<(K, V)> {
+        if self.0.is_empty() {
+            return None;
+        }
+        let result = self.0.pop();
+        if let Some(na) = atune.space_action(self.0.state()) {
+            self.0.set_alloc(na);
+        }
+        result
     }
 
     fn get_xy<T, R>(&self, range: &R) -> (usize, usize)
@@ -1123,15 +1152,20 @@ impl<K, V> NonLeafInner<K, V> {
         (v.into_iter(), c.into_iter())
     }
 
-    fn remove_at(&mut self, i: usize) -> ((K, V), usize) {
-        if let Some(kv) = self.c.ixm(i).pop_last() {
+    fn remove_at<A: AllocTuning>(&mut self, i: usize, atune: &A) -> ((K, V), usize) {
+        if let Some(kv) = self.c.ixm(i).pop_last(atune) {
             let (kp, vp) = self.v.0.ixbm(i);
             let k = mem::replace(kp, kv.0);
             let v = mem::replace(vp, kv.1);
             ((k, v), i + 1)
         } else {
             self.c.remove(i);
-            (self.v.0.remove(i), i)
+            let kv = self.v.0.remove(i);
+            if let Some(na) = atune.space_action(self.v.0.state()) {
+                self.v.0.set_alloc(na);
+                self.c.set_alloc(na + 1);
+            }
+            (kv, i)
         }
     }
 
@@ -1188,37 +1222,47 @@ impl<K, V> NonLeafInner<K, V> {
         }
     }
 
-    fn remove<Q>(&mut self, key: &Q) -> Option<(K, V)>
+    fn remove<Q, A: AllocTuning>(&mut self, key: &Q, atune: &A) -> Option<(K, V)>
     where
         K: Borrow<Q> + Ord,
         Q: Ord + ?Sized,
     {
         match self.v.look(key) {
-            Ok(i) => Some(self.remove_at(i).0),
-            Err(i) => self.c.ixm(i).remove(key),
+            Ok(i) => Some(self.remove_at(i, atune).0),
+            Err(i) => self.c.ixm(i).remove(key, atune),
         }
     }
 
-    fn pop_first(&mut self) -> Option<(K, V)> {
-        if let Some(x) = self.c.ixm(0).pop_first() {
+    fn pop_first<A: AllocTuning>(&mut self, atune: &A) -> Option<(K, V)> {
+        if let Some(x) = self.c.ixm(0).pop_first(atune) {
             Some(x)
         } else if self.v.0.is_empty() {
             None
         } else {
             self.c.remove(0);
-            Some(self.v.0.remove(0))
+            let result = Some(self.v.0.remove(0));
+            if let Some(na) = atune.space_action(self.v.0.state()) {
+                self.v.0.set_alloc(na);
+                self.c.set_alloc(na + 1);
+            }
+            result
         }
     }
 
-    fn pop_last(&mut self) -> Option<(K, V)> {
+    fn pop_last<A: AllocTuning>(&mut self, atune: &A) -> Option<(K, V)> {
         let i = self.c.len();
-        if let Some(x) = self.c.ixm(i - 1).pop_last() {
+        if let Some(x) = self.c.ixm(i - 1).pop_last(atune) {
             Some(x)
         } else if self.v.0.is_empty() {
             None
         } else {
             self.c.pop();
-            self.v.0.pop()
+            let result = self.v.0.pop();
+            if let Some(na) = atune.space_action(self.v.0.state()) {
+                self.v.0.set_alloc(na);
+                self.c.set_alloc(na + 1);
+            }
+            result
         }
     }
 } // End impl NonLeafInner
@@ -2643,7 +2687,8 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
                     tsp -= 1;
                     let (nl, ix) = self.stack[tsp];
                     if ix < (*nl).v.0.len() {
-                        let (kv, ix) = (*nl).remove_at(ix);
+                        let a = &(*self.map).atune;
+                        let (kv, ix) = (*nl).remove_at(ix, a);
                         self.stack[tsp] = (nl, ix);
                         self.push(tsp + 1, (*nl).c.ixm(ix));
                         (*self.map).len -= 1;
