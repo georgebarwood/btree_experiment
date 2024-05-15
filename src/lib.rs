@@ -35,7 +35,7 @@ pub enum FullAction {
 pub trait AllocTuning: Clone + Default {
     /// Determine what to do when the size of an underlying BTree vector needs to be increased.
     fn full_action(&self, i: usize, len: usize) -> FullAction;
-    /// Returns the new allocation if the allocation should be reduced based on the current allocation and length.
+    /// Returns the new allocation if the allocation should be reduced based on the current length and allocation.
     fn space_action(&self, state: (usize, usize)) -> Option<usize>;
 }
 
@@ -70,7 +70,7 @@ impl AllocTuning for DefaultAllocTuning {
         }
     }
     fn space_action(&self, (len, alloc): (usize, usize)) -> Option<usize> {
-        if alloc - len > self.alloc_unit as usize {
+        if alloc - len >= self.alloc_unit as usize {
             Some(len)
         } else {
             None
@@ -617,7 +617,7 @@ use serde::{
 };
 
 #[cfg(feature = "serde")]
-impl<K, V, A: AllocTuning> Serialize for BTreeMap<K, V, A>
+impl<K, V> Serialize for BTreeMap<K, V>
 where
     K: serde::Serialize,
     V: serde::Serialize,
@@ -635,12 +635,12 @@ where
 }
 
 #[cfg(feature = "serde")]
-struct BTreeMapVisitor<K, V, A> {
-    marker: PhantomData<fn() -> BTreeMap<K, V, A>>,
+struct BTreeMapVisitor<K, V> {
+    marker: PhantomData<fn() -> BTreeMap<K, V>>,
 }
 
 #[cfg(feature = "serde")]
-impl<K, V, A: AllocTuning> BTreeMapVisitor<K, V, A> {
+impl<K, V> BTreeMapVisitor<K, V> {
     fn new() -> Self {
         BTreeMapVisitor {
             marker: PhantomData,
@@ -649,12 +649,12 @@ impl<K, V, A: AllocTuning> BTreeMapVisitor<K, V, A> {
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, V, A: AllocTuning> Visitor<'de> for BTreeMapVisitor<K, V, A>
+impl<'de, K, V> Visitor<'de> for BTreeMapVisitor<K, V>
 where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,
 {
-    type Value = BTreeMap<K, V, A>;
+    type Value = BTreeMap<K, V>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("BTreeMap")
@@ -691,7 +691,7 @@ where
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, V, A: AllocTuning> Deserialize<'de> for BTreeMap<K, V, A>
+impl<'de, K, V> Deserialize<'de> for BTreeMap<K, V>
 where
     K: Deserialize<'de> + Ord,
     V: Deserialize<'de>,

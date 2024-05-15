@@ -504,6 +504,8 @@ impl<K, V> PairVec<K, V> {
         safe_assert!(at <= self.len());
         let x = at + 1;
         let len = self.len() - x;
+        safe_assert!(a1 >= at);
+        safe_assert!(a2 >= len);
         let mut result = Self::new();
         result.set_alloc(a2);
         unsafe {
@@ -521,7 +523,6 @@ impl<K, V> PairVec<K, V> {
 
     pub fn insert(&mut self, at: usize, (key, value): (K, V)) {
         safe_assert!(at <= self.len());
-        assert!(self.len < self.alloc, "{} {}", self.len, self.alloc);
         safe_assert!(self.len < self.alloc);
         unsafe {
             let n = self.len() - at;
