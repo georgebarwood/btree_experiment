@@ -46,8 +46,8 @@ pub struct DefaultAllocTuning {
 impl Default for DefaultAllocTuning {
     fn default() -> Self {
         Self {
-            branch: 6,     // 64,
-            alloc_unit: 1, // 8,
+            branch: 64,
+            alloc_unit: 8,
         }
     }
 }
@@ -3003,5 +3003,5 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[cfg(test)]
 mod mytests;
 
-#[cfg(test)]
-mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
+// #[cfg(test)]
+// mod stdtests; // Increases compile/link time to 9 seconds from 3 seconds, so sometimes commented out!
