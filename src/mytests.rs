@@ -4,6 +4,35 @@ const REP: usize = if cfg!(miri) { 2 } else { 1000 };
 const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
 #[test]
+#[cfg(feature = "serde")]
+fn exp_serde_test() {
+    let n = N;
+    let mut map = BTreeMap::new();
+    for i in 0..n {
+        map.insert(i as u32, 1u8);
+    }
+    for _i in 0..REP * 10 {
+        let ser = bincode::serialize(&map).unwrap();
+        let _: BTreeMap<i32, u8> = bincode::deserialize(&ser).unwrap();
+    }
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn std_serde_test() {
+    use std::collections::BTreeMap;
+    let n = N;
+    let mut map = BTreeMap::new();
+    for i in 0..n {
+        map.insert(i as u32, 1u8);
+    }
+    for _i in 0..REP * 10 {
+        let ser = bincode::serialize(&map).unwrap();
+        let _: BTreeMap<i32, u8> = bincode::deserialize(&ser).unwrap();
+    }
+}
+
+#[test]
 fn exp_mem_test() {
     let n = N * 10;
     let mut map = BTreeMap::new();
@@ -357,6 +386,9 @@ fn basic_range_test() {
 fn exp_insert_fwd() {
     for _rep in 0..REP {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let mut tuning = t.get_tuning();
+        tuning.set_seq();
+        t.set_tuning(tuning);
         let n = N;
         for i in 0..n {
             t.insert(i, i);
@@ -385,6 +417,9 @@ fn std_insert_fwd() {
 fn exp_insert_rev() {
     for _rep in 0..REP {
         let mut t = /*std::collections::*/ BTreeMap::<usize, usize>::default();
+        let mut tuning = t.get_tuning();
+        tuning.set_seq();
+        t.set_tuning(tuning);
         let n = N;
         for i in (0..n).rev() {
             t.insert(i, i);

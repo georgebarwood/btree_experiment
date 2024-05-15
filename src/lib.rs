@@ -37,6 +37,8 @@ pub trait AllocTuning: Clone + Default {
     fn full_action(&self, i: usize, len: usize) -> FullAction;
     /// Returns the new allocation if the allocation should be reduced based on the current length and allocation.
     fn space_action(&self, state: (usize, usize)) -> Option<usize>;
+    /// Set allocation mode to be optimal for sequential (ordered) inserts.
+    fn set_seq(&mut self);
 }
 
 /// Default implementation of [AllocTuning]. Default branch is 64, default allocation unit is 8.
@@ -75,6 +77,9 @@ impl AllocTuning for DefaultAllocTuning {
         } else {
             None
         }
+    }
+    fn set_seq(&mut self) {
+        self.alloc_unit = u8::MAX;
     }
 }
 impl DefaultAllocTuning {
@@ -134,9 +139,14 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
         }
     }
 
+    /// Get a cloned copy of the tuning.
+    pub fn get_tuning(&self) -> A {
+        self.atune.clone()
+    }
+
     /// Update the allocation tuning for the map.
-    pub fn update_tuning(&mut self, atune: A) {
-        self.atune = atune;
+    pub fn set_tuning(&mut self, atune: A) -> A {
+        mem::replace(&mut self.atune, atune)
     }
 
     /// Clear the map.
@@ -665,6 +675,9 @@ where
         M: MapAccess<'de>,
     {
         let mut map = BTreeMap::new();
+        let mut tuning = map.get_tuning();
+        tuning.set_seq();
+        let save = map.set_tuning(tuning);
         {
             let mut c = map.lower_bound_mut(Bound::Unbounded);
             loop {
@@ -683,6 +696,7 @@ where
                 }
             }
         }
+        map.set_tuning(save);
         while let Some((k, v)) = access.next_entry()? {
             map.insert(k, v);
         }
