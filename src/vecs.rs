@@ -5,6 +5,7 @@ use std::{
     cmp::Ordering,
     fmt,
     fmt::Debug,
+    marker::PhantomData,
     mem,
     ops::{Deref, DerefMut},
     ptr,
@@ -386,8 +387,6 @@ impl<T> ExactSizeIterator for IntoIterShortVec<T> {
         self.v.len() - self.start
     }
 }
-
-use std::marker::PhantomData;
 
 /// Vector of (key,value) pairs, keys stored separately from values for cache efficient search.
 pub struct PairVec<K, V> {

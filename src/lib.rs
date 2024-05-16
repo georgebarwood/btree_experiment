@@ -2640,12 +2640,12 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
             if (*leaf).full() {
                 let a = &(*self.map).atune;
                 match a.full_action(self.index, (*leaf).0.len()) {
-                    FullAction::Split(b, a1, a2) => {                        
+                    FullAction::Split(b, a1, a2) => {
                         let (med, right) = (*leaf).0.split(b, a1, a2);
                         let right = Tree::L(Leaf(right));
                         let r = usize::from(self.index > b);
                         self.index -= r * (b + 1);
-                        assert!(self.index < if r==1 {a2} else {a1});
+                        assert!(self.index < if r == 1 { a2 } else { a1 });
                         let t = self.save_split(med, right, r);
                         leaf = (*t).leaf();
                         self.leaf = Some(leaf);
@@ -2667,7 +2667,7 @@ impl<'a, K, V, A: AllocTuning> CursorMutKey<'a, K, V, A> {
                             let (med, right) = (*nl).split(b, a1, a2);
                             let r = usize::from(ix > b);
                             ix -= r * (b + 1);
-                            assert!( ix < if r==1 {a2} else {a1} );
+                            assert!(ix < if r == 1 { a2 } else { a1 });
                             let t = self.save_split(med, Tree::NL(right), r);
                             nl = (*t).nonleaf();
                         }
