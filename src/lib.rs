@@ -462,24 +462,6 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
         IntoValues(self.into_iter())
     }
 
-    /// Get a cursor positioned just after bound that permits map mutation.
-    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V, A>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        CursorMut::lower_bound(self, bound)
-    }
-
-    /// Get a cursor positioned just before bound that permits map mutation.
-    pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V, A>
-    where
-        K: Borrow<Q> + Ord,
-        Q: Ord + ?Sized,
-    {
-        CursorMut::upper_bound(self, bound)
-    }
-
     /// Get cursor positioned just after bound.
     #[must_use]
     pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, K, V, A>
@@ -498,6 +480,24 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
         Q: Ord + ?Sized,
     {
         Cursor::upper_bound(self, bound)
+    }
+
+    /// Get a cursor positioned just after bound that permits map mutation.
+    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V, A>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        CursorMut::lower_bound(self, bound)
+    }
+
+    /// Get a cursor positioned just before bound that permits map mutation.
+    pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, K, V, A>
+    where
+        K: Borrow<Q> + Ord,
+        Q: Ord + ?Sized,
+    {
+        CursorMut::upper_bound(self, bound)
     }
 } // End impl BTreeMap
 
@@ -536,14 +536,14 @@ impl<K, V, A: AllocTuning> IntoIterator for BTreeMap<K, V, A> {
         IntoIter::new(self)
     }
 }
-impl<'a, K, V, A: AllocTuning> IntoIterator for &'a BTreeMap<K, V, A> {
+impl<'a, K, V> IntoIterator for &'a BTreeMap<K, V> {
     type Item = (&'a K, &'a V);
     type IntoIter = Iter<'a, K, V>;
     fn into_iter(self) -> Iter<'a, K, V> {
         self.iter()
     }
 }
-impl<'a, K, V, A: AllocTuning> IntoIterator for &'a mut BTreeMap<K, V, A> {
+impl<'a, K, V> IntoIterator for &'a mut BTreeMap<K, V> {
     type Item = (&'a K, &'a mut V);
     type IntoIter = IterMut<'a, K, V>;
     fn into_iter(self) -> IterMut<'a, K, V> {
@@ -571,7 +571,7 @@ where
         map
     }
 }
-impl<K, V, A: AllocTuning> Extend<(K, V)> for BTreeMap<K, V, A>
+impl<K, V> Extend<(K, V)> for BTreeMap<K, V>
 where
     K: Ord,
 {
@@ -584,7 +584,7 @@ where
         }
     }
 }
-impl<'a, K, V, A: AllocTuning> Extend<(&'a K, &'a V)> for BTreeMap<K, V, A>
+impl<'a, K, V> Extend<(&'a K, &'a V)> for BTreeMap<K, V>
 where
     K: Ord + Copy,
     V: Copy,
@@ -598,7 +598,7 @@ where
         }
     }
 }
-impl<K, Q, V, A: AllocTuning> std::ops::Index<&Q> for BTreeMap<K, V, A>
+impl<K, Q, V> std::ops::Index<&Q> for BTreeMap<K, V>
 where
     K: Borrow<Q> + Ord,
     Q: Ord + ?Sized,
@@ -613,7 +613,7 @@ where
         self.get(key).expect("no entry found for key")
     }
 }
-impl<K: Debug, V: Debug, A: AllocTuning> Debug for BTreeMap<K, V, A> {
+impl<K: Debug, V: Debug> Debug for BTreeMap<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map().entries(self.iter()).finish()
     }
