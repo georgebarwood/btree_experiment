@@ -130,6 +130,16 @@ impl<K, V, A: AllocTuning> BTreeMap<K, V, A> {
     pub(crate) fn check(&self) {}
 
     /// Returns a new, empty map with specified allocation tuning.
+    ///
+    /// # Example
+    ///
+    /// ```
+    ///     use btree_experiment::{BTreeMap,DefaultAllocTuning};
+    ///     let mut mymap = BTreeMap::with_tuning(DefaultAllocTuning::new(8,2));
+    ///     mymap.insert("England", "London");
+    ///     mymap.insert("France", "Paris");
+    ///     println!("The capital of France is {}", mymap["France"]);
+    /// ```
     #[must_use]
     pub fn with_tuning(atune: A) -> Self {
         Self {
