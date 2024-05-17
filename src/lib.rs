@@ -23,74 +23,17 @@
 //! - `serde` : enables serialisation of [`BTreeMap`] via serde crate.
 //! - `unsafe-optim` : uses unsafe code for extra optimisation.
 
-/// Type returned by [AllocTuning::full_action].
-pub enum FullAction {
-    /// Vec is to be split at indicated point with the indicated new allocations.
-    Split(usize, usize, usize),
-    /// Vec is to be extended to indicated length.
-    Extend(usize),
-}
-
-/// Trait for controlling storage allocation for [BTreeMap].
-pub trait AllocTuning: Clone + Default {
-    /// Determine what to do when the size of an underlying BTree vector needs to be increased.
-    fn full_action(&self, i: usize, len: usize) -> FullAction;
-    /// Returns the new allocation if the allocation should be reduced based on the current length and allocation.
-    fn space_action(&self, state: (usize, usize)) -> Option<usize>;
-    /// Set allocation mode to be optimal for sequential (ordered) inserts.
-    fn set_seq(&mut self);
-}
-
-/// Default implementation of [AllocTuning]. Default branch is 64, default allocation unit is 8.
-#[derive(Clone)]
-pub struct DefaultAllocTuning {
-    branch: u16,
-    alloc_unit: u8,
-}
-impl Default for DefaultAllocTuning {
-    fn default() -> Self {
-        Self {
-            branch: 64,
-            alloc_unit: 8,
-        }
-    }
-}
-impl AllocTuning for DefaultAllocTuning {
-    fn full_action(&self, i: usize, len: usize) -> FullAction {
-        let lim = (self.branch as usize) * 2 + 1;
-        if len >= lim {
-            let b = len / 2;
-            let r = usize::from(i > b);
-            let au = self.alloc_unit as usize;
-            FullAction::Split(b, b + (1 - r) * au, (len - b - 1) + r * au)
-        } else {
-            let mut na = len + self.alloc_unit as usize;
-            if na > lim {
-                na = lim;
-            }
-            FullAction::Extend(na)
-        }
-    }
-    fn space_action(&self, (len, alloc): (usize, usize)) -> Option<usize> {
-        if alloc - len >= self.alloc_unit as usize {
-            Some(len)
-        } else {
-            None
-        }
-    }
-    fn set_seq(&mut self) {
-        self.alloc_unit = u8::MAX;
-    }
-}
-impl DefaultAllocTuning {
-    /// Construct with specified branch and allocation unit.
-    pub fn new(branch: u16, alloc_unit: u8) -> Self {
-        assert!(branch >= 6);
-        assert!(branch <= 512);
-        assert!(alloc_unit > 0);
-        Self { branch, alloc_unit }
-    }
-}
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    error::Error,
+    fmt,
+    fmt::Debug,
+    iter::FusedIterator,
+    marker::PhantomData,
+    mem,
+    ops::{Bound, RangeBounds},
+};
 
 /// `BTreeMap` similar to [`std::collections::BTreeMap`].
 ///
@@ -728,17 +671,74 @@ where
     }
 }
 
-use std::{
-    borrow::Borrow,
-    cmp::Ordering,
-    error::Error,
-    fmt,
-    fmt::Debug,
-    iter::FusedIterator,
-    marker::PhantomData,
-    mem,
-    ops::{Bound, RangeBounds},
-};
+/// Type returned by [AllocTuning::full_action].
+pub enum FullAction {
+    /// Vec is to be split at indicated point with the indicated new allocations.
+    Split(usize, usize, usize),
+    /// Vec is to be extended to indicated length.
+    Extend(usize),
+}
+
+/// Trait for controlling storage allocation for [BTreeMap].
+pub trait AllocTuning: Clone + Default {
+    /// Determine what to do when the size of an underlying BTree vector needs to be increased.
+    fn full_action(&self, i: usize, len: usize) -> FullAction;
+    /// Returns the new allocation if the allocation should be reduced based on the current length and allocation.
+    fn space_action(&self, state: (usize, usize)) -> Option<usize>;
+    /// Set allocation mode to be optimal for sequential (ordered) inserts.
+    fn set_seq(&mut self);
+}
+
+/// Default implementation of [AllocTuning]. Default branch is 64, default allocation unit is 8.
+#[derive(Clone)]
+pub struct DefaultAllocTuning {
+    branch: u16,
+    alloc_unit: u8,
+}
+impl Default for DefaultAllocTuning {
+    fn default() -> Self {
+        Self {
+            branch: 64,
+            alloc_unit: 8,
+        }
+    }
+}
+impl AllocTuning for DefaultAllocTuning {
+    fn full_action(&self, i: usize, len: usize) -> FullAction {
+        let lim = (self.branch as usize) * 2 + 1;
+        if len >= lim {
+            let b = len / 2;
+            let r = usize::from(i > b);
+            let au = self.alloc_unit as usize;
+            FullAction::Split(b, b + (1 - r) * au, (len - b - 1) + r * au)
+        } else {
+            let mut na = len + self.alloc_unit as usize;
+            if na > lim {
+                na = lim;
+            }
+            FullAction::Extend(na)
+        }
+    }
+    fn space_action(&self, (len, alloc): (usize, usize)) -> Option<usize> {
+        if alloc - len >= self.alloc_unit as usize {
+            Some(len)
+        } else {
+            None
+        }
+    }
+    fn set_seq(&mut self) {
+        self.alloc_unit = u8::MAX;
+    }
+}
+impl DefaultAllocTuning {
+    /// Construct with specified branch and allocation unit.
+    pub fn new(branch: u16, alloc_unit: u8) -> Self {
+        assert!(branch >= 6);
+        assert!(branch <= 512);
+        assert!(alloc_unit > 0);
+        Self { branch, alloc_unit }
+    }
+}
 
 // Vector types.
 type StkVec<T> = arrayvec::ArrayVec<T, 15>;
